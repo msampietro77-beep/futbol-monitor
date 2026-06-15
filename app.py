@@ -68,6 +68,9 @@ from metricas import (
     cargar_lesiones_activas,
     calcular_acwr_ewma,
     cargar_wellness,
+    cargar_jugadores,
+    cargar_etapas_rtp,
+    cargar_sesiones_rtp_jugador,
 )
 
 
@@ -90,6 +93,45 @@ def obtener_acwr_historico():
 @st.cache_data(ttl=300)
 def obtener_wellness_historico():
     return cargar_wellness()
+
+@st.cache_data(ttl=300)
+def obtener_estado_rtp():
+    """
+    Construye el resumen RTP del plantel para el dashboard.
+    Por cada jugador con sesiones RTP: etapa actual, último EVA, última confianza,
+    días en rehabilitación y porcentaje de progreso en el protocolo.
+    """
+    jugadores  = cargar_jugadores()
+    etapas     = cargar_etapas_rtp()
+    n_etapas   = len(etapas)
+
+    filas = []
+    for _, jug in jugadores.iterrows():
+        sesiones = cargar_sesiones_rtp_jugador(int(jug["id"]))
+        if sesiones.empty:
+            continue
+
+        ultima     = sesiones.iloc[-1]
+        primera    = sesiones.iloc[0]
+        dias_rtp   = (sesiones["fecha"].max() - sesiones["fecha"].min()).days + 1
+        pct_avance = round((int(ultima["etapa_orden"]) / n_etapas) * 100)
+
+        filas.append({
+            "jugador_id":      int(jug["id"]),
+            "jugador":         jug["jugador"],
+            "posicion":        jug["posicion"],
+            "numero":          int(jug["numero"]),
+            "etapa_orden":     int(ultima["etapa_orden"]),
+            "etapa_nombre":    ultima["etapa_nombre"],
+            "dias_rtp":        dias_rtp,
+            "pct_avance":      pct_avance,
+            "eva_ultimo":      ultima["eva_promedio"],
+            "confianza_ultimo":ultima["confianza_promedio"],
+            "ultima_sesion":   ultima["fecha"].strftime("%d/%m/%Y"),
+            "avanza":          bool(ultima["avanza"]),
+        })
+
+    return pd.DataFrame(filas) if filas else pd.DataFrame()
 
 
 # ============================================================
@@ -619,6 +661,108 @@ else:
             )
             st.markdown("**Por zona corporal:**")
             st.dataframe(resumen_zona, hide_index=True, width='stretch')
+
+
+# ============================================================
+# SECCIÓN 7: ESTADO RTP DEL PLANTEL
+# ============================================================
+
+st.divider()
+st.subheader("🏥 Estado Return to Play (RTP)")
+
+rtp_df = obtener_estado_rtp()
+
+if rtp_df.empty:
+    st.info(
+        "Sin jugadores en proceso de RTP. "
+        "Los fisios registran las sesiones desde el módulo **RTP** en el menú lateral."
+    )
+else:
+    # Métricas resumen RTP
+    n_en_rtp   = len(rtp_df)
+    n_avanzados = int((rtp_df["etapa_orden"] >= 5).sum())   # etapas 5 y 6 → cerca de volver
+    eva_prom   = rtp_df["eva_ultimo"].mean()
+    conf_prom  = rtp_df["confianza_ultimo"].mean()
+
+    cr1, cr2, cr3, cr4 = st.columns(4)
+    cr1.metric("🔄 Jugadores en RTP",        n_en_rtp)
+    cr2.metric("🔜 Cerca de volver (E5-E6)", n_avanzados)
+    cr3.metric("📊 EVA promedio plantel",
+               f"{eva_prom:.1f}" if not pd.isna(eva_prom) else "—",
+               help="Promedio de dolor (0-10) en última sesión. Menor es mejor.")
+    cr4.metric("💪 Confianza promedio",
+               f"{conf_prom:.1f}" if not pd.isna(conf_prom) else "—",
+               help="Promedio de confianza en zona lesionada (0-10). Mayor es mejor.")
+
+    st.markdown(" ")
+
+    # Tarjetas por jugador en RTP
+    n_cols  = 3
+    filas_rtp = [rtp_df.iloc[i:i+n_cols] for i in range(0, len(rtp_df), n_cols)]
+
+    COLORES_ETAPA = {
+        1: "#888888",   # gris — reposo
+        2: "#4A90D9",   # azul — movilidad
+        3: "#F5A623",   # naranja — aeróbico
+        4: "#F5A623",   # naranja — cambios dirección
+        5: "#7ED321",   # verde claro — específico
+        6: "#21C354",   # verde — listo
+    }
+
+    for fila_rtp in filas_rtp:
+        cols_rtp = st.columns(n_cols)
+        for idx, (_, jug_rtp) in enumerate(fila_rtp.iterrows()):
+
+            color_etapa = COLORES_ETAPA.get(jug_rtp["etapa_orden"], "#888")
+            pct         = jug_rtp["pct_avance"]
+
+            # Color EVA: verde si bajo, rojo si alto
+            eva_v  = jug_rtp["eva_ultimo"]
+            conf_v = jug_rtp["confianza_ultimo"]
+            color_eva  = "#21C354" if (not pd.isna(eva_v)  and eva_v  <= 3) else "#FF4B4B"
+            color_conf = "#21C354" if (not pd.isna(conf_v) and conf_v >= 7) else "#FF8C00"
+
+            with cols_rtp[idx]:
+                with st.container(border=True):
+                    # Nombre y posición
+                    st.markdown(
+                        f"<b style='font-size:1.05rem'>#{jug_rtp['numero']} "
+                        f"{jug_rtp['jugador']}</b>",
+                        unsafe_allow_html=True,
+                    )
+                    st.caption(jug_rtp["posicion"].capitalize())
+
+                    # Etapa actual con color
+                    st.markdown(
+                        f"<div style='background:{color_etapa}22; border-left:3px solid "
+                        f"{color_etapa}; padding:4px 8px; border-radius:3px; "
+                        f"font-size:0.85rem; margin:4px 0'>"
+                        f"<b>E{jug_rtp['etapa_orden']} — {jug_rtp['etapa_nombre']}</b>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                    # Barra de progreso del protocolo
+                    st.progress(pct / 100, text=f"Protocolo: {pct}%")
+
+                    # EVA y Confianza de la última sesión
+                    mc1, mc2, mc3 = st.columns(3)
+                    mc1.metric("Días RTP", jug_rtp["dias_rtp"])
+
+                    eva_txt  = f"{eva_v:.1f}"  if not pd.isna(eva_v)  else "—"
+                    conf_txt = f"{conf_v:.1f}" if not pd.isna(conf_v) else "—"
+
+                    mc2.metric("EVA", eva_txt)
+                    mc3.metric("Conf.", conf_txt)
+
+                    # Última sesión y estado de avance
+                    estado_rtp = "✅ Aprobó avance" if jug_rtp["avanza"] else "🔄 Continúa etapa"
+                    st.markdown(
+                        f"<div style='font-size:0.8rem; color:gray; margin-top:4px'>"
+                        f"Última sesión: {jug_rtp['ultima_sesion']} · {estado_rtp}"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
 
 
 # ============================================================
