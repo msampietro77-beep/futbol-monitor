@@ -13,27 +13,13 @@ Flujo de trabajo:
 Protocolo de 6 etapas iterativo — drills configurables desde la DB.
 """
 
-import sys
-import os
-
-# Garantiza que Streamlit Cloud encuentre metricas.py en el directorio raíz
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import sqlite3
+import os
 from datetime import date
-
-from metricas import (
-    cargar_jugadores,
-    cargar_etapas_rtp,
-    cargar_drills_etapa,
-    cargar_sesiones_rtp_jugador,
-    cargar_resultados_sesion,
-    etapa_actual_jugador,
-)
 
 
 # ============================================================
@@ -68,6 +54,90 @@ DB_PATH = os.path.join(
 
 def _conectar():
     return sqlite3.connect(DB_PATH)
+
+
+# ── Funciones de lectura (sin depender de metricas.py) ──────
+
+def cargar_jugadores():
+    conn = _conectar()
+    df = pd.read_sql("""
+        SELECT id, nombre || ' ' || apellido AS jugador,
+               posicion, numero_camiseta AS numero
+        FROM jugadores
+        ORDER BY posicion, numero_camiseta
+    """, conn)
+    conn.close()
+    return df
+
+
+def cargar_etapas_rtp():
+    conn = _conectar()
+    df = pd.read_sql("""
+        SELECT id, orden, nombre, descripcion, eva_max, confianza_min
+        FROM rtp_etapas WHERE activa = 1 ORDER BY orden
+    """, conn)
+    conn.close()
+    return df
+
+
+def cargar_drills_etapa(etapa_id):
+    conn = _conectar()
+    df = pd.read_sql("""
+        SELECT id, nombre, descripcion
+        FROM rtp_drills WHERE etapa_id = ? AND activo = 1 ORDER BY id
+    """, conn, params=[etapa_id])
+    conn.close()
+    return df
+
+
+def cargar_sesiones_rtp_jugador(jugador_id):
+    conn = _conectar()
+    df = pd.read_sql("""
+        SELECT s.id AS sesion_id, s.fecha, s.etapa_id,
+               e.orden AS etapa_orden, e.nombre AS etapa_nombre,
+               e.eva_max, e.confianza_min,
+               s.fisio, s.avanza, s.notas,
+               COUNT(r.id) AS n_drills,
+               ROUND(AVG(r.eva), 1) AS eva_promedio,
+               ROUND(AVG(r.confianza), 1) AS confianza_promedio,
+               MAX(r.eva) AS eva_max_sesion
+        FROM rtp_sesiones s
+        JOIN rtp_etapas e ON e.id = s.etapa_id
+        LEFT JOIN rtp_resultados r ON r.sesion_id = s.id
+        WHERE s.jugador_id = ?
+        GROUP BY s.id ORDER BY s.fecha
+    """, conn, params=[jugador_id], parse_dates=["fecha"])
+    conn.close()
+    return df
+
+
+def cargar_resultados_sesion(sesion_id):
+    conn = _conectar()
+    df = pd.read_sql("""
+        SELECT r.id, d.nombre AS drill, r.completado, r.eva, r.confianza, r.notas
+        FROM rtp_resultados r
+        JOIN rtp_drills d ON d.id = r.drill_id
+        WHERE r.sesion_id = ? ORDER BY r.id
+    """, conn, params=[sesion_id])
+    conn.close()
+    return df
+
+
+def etapa_actual_jugador(jugador_id):
+    conn = _conectar()
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT s.etapa_id, e.orden, e.nombre, s.avanza
+        FROM rtp_sesiones s
+        JOIN rtp_etapas e ON e.id = s.etapa_id
+        WHERE s.jugador_id = ?
+        ORDER BY s.fecha DESC LIMIT 1
+    """, (jugador_id,))
+    row = cur.fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return {"etapa_id": row[0], "orden": row[1], "nombre": row[2], "avanza": row[3]}
 
 
 # ============================================================
