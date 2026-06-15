@@ -50,12 +50,21 @@ st.markdown("""
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "futbol_monitoreo.db")
 
+import database, sqlite3
+
 if not os.path.exists(DB_PATH):
+    # Primera vez: crear tablas + simular 90 días de datos
     with st.spinner("⏳ Primera ejecución: creando base de datos con datos simulados..."):
-        import database
         database.inicializar_base_datos()
     st.success("✅ Base de datos creada correctamente. Cargando el sistema...")
     st.rerun()
+else:
+    # DB ya existe: garantizar que las tablas nuevas estén creadas
+    # (CREATE TABLE IF NOT EXISTS e INSERT OR IGNORE son seguros de repetir)
+    _conn = sqlite3.connect(DB_PATH)
+    database.crear_tablas(_conn)
+    database.insertar_protocolo_rtp(_conn)
+    _conn.close()
 
 
 # ============================================================
