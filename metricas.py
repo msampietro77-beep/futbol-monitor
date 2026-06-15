@@ -722,6 +722,111 @@ def snapshot_fuerza_plantel():
 
 
 # ============================================================
+# FUNCIONES RTP (Return to Play)
+# ============================================================
+
+def cargar_etapas_rtp():
+    """Carga las etapas del protocolo RTP ordenadas."""
+    conn = _conectar()
+    df = pd.read_sql("""
+        SELECT id, orden, nombre, descripcion, eva_max, confianza_min, activa
+        FROM rtp_etapas
+        WHERE activa = 1
+        ORDER BY orden
+    """, conn)
+    conn.close()
+    return df
+
+
+def cargar_drills_etapa(etapa_id):
+    """Carga los drills activos de una etapa específica."""
+    conn = _conectar()
+    df = pd.read_sql("""
+        SELECT id, nombre, descripcion
+        FROM rtp_drills
+        WHERE etapa_id = ? AND activo = 1
+        ORDER BY id
+    """, conn, params=[etapa_id])
+    conn.close()
+    return df
+
+
+def cargar_sesiones_rtp_jugador(jugador_id):
+    """
+    Carga el historial completo de sesiones RTP de un jugador.
+    Incluye el nombre de la etapa y el promedio de EVA y confianza de la sesión.
+    """
+    conn = _conectar()
+    df = pd.read_sql("""
+        SELECT
+            s.id           AS sesion_id,
+            s.fecha,
+            s.etapa_id,
+            e.orden        AS etapa_orden,
+            e.nombre       AS etapa_nombre,
+            e.eva_max,
+            e.confianza_min,
+            s.fisio,
+            s.avanza,
+            s.notas,
+            COUNT(r.id)                    AS n_drills,
+            ROUND(AVG(r.eva), 1)           AS eva_promedio,
+            ROUND(AVG(r.confianza), 1)     AS confianza_promedio,
+            MAX(r.eva)                     AS eva_max_sesion
+        FROM rtp_sesiones s
+        JOIN rtp_etapas e ON e.id = s.etapa_id
+        LEFT JOIN rtp_resultados r ON r.sesion_id = s.id
+        WHERE s.jugador_id = ?
+        GROUP BY s.id
+        ORDER BY s.fecha
+    """, conn, params=[jugador_id], parse_dates=["fecha"])
+    conn.close()
+    return df
+
+
+def cargar_resultados_sesion(sesion_id):
+    """Carga el detalle de cada drill de una sesión RTP."""
+    conn = _conectar()
+    df = pd.read_sql("""
+        SELECT
+            r.id,
+            d.nombre       AS drill,
+            r.completado,
+            r.eva,
+            r.confianza,
+            r.notas
+        FROM rtp_resultados r
+        JOIN rtp_drills d ON d.id = r.drill_id
+        WHERE r.sesion_id = ?
+        ORDER BY r.id
+    """, conn, params=[sesion_id])
+    conn.close()
+    return df
+
+
+def etapa_actual_jugador(jugador_id):
+    """
+    Retorna la etapa RTP actual del jugador (la de su última sesión).
+    Si no tiene sesiones devuelve None.
+    """
+    conn = _conectar()
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT s.etapa_id, e.orden, e.nombre, s.avanza
+        FROM rtp_sesiones s
+        JOIN rtp_etapas e ON e.id = s.etapa_id
+        WHERE s.jugador_id = ?
+        ORDER BY s.fecha DESC
+        LIMIT 1
+    """, (jugador_id,))
+    row = cur.fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return {"etapa_id": row[0], "orden": row[1], "nombre": row[2], "avanza": row[3]}
+
+
+# ============================================================
 # PRUEBA RÁPIDA EN CONSOLA
 # ============================================================
 

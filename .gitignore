@@ -21,6 +21,9 @@ env/
 # Claude Code
 .claude/
 
+# Streamlit secrets (contraseñas — nunca subir a GitHub)
+.streamlit/secrets.toml
+
 # Sistema operativo
 .DS_Store
 Thumbs.db

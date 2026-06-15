@@ -115,7 +115,7 @@ TIPOS_LESION = [
 # ============================================================
 
 def crear_tablas(conn):
-    """Crea las 5 tablas si no existen todavía."""
+    """Crea todas las tablas si no existen todavía."""
     cur = conn.cursor()
 
     # Jugadores del plantel
@@ -198,8 +198,190 @@ def crear_tablas(conn):
         )
     """)
 
+    # ── MÓDULO RTP ───────────────────────────────────────────
+
+    # Etapas del protocolo de Return to Play
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS rtp_etapas (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            orden          INTEGER NOT NULL UNIQUE,
+            nombre         TEXT    NOT NULL,
+            descripcion    TEXT,
+            eva_max        INTEGER DEFAULT 3,
+            confianza_min  INTEGER DEFAULT 7,
+            activa         INTEGER DEFAULT 1
+        )
+    """)
+
+    # Drills disponibles por etapa
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS rtp_drills (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            etapa_id    INTEGER NOT NULL,
+            nombre      TEXT    NOT NULL,
+            descripcion TEXT,
+            activo      INTEGER DEFAULT 1,
+            FOREIGN KEY (etapa_id) REFERENCES rtp_etapas(id)
+        )
+    """)
+
+    # Sesiones RTP: una por día por jugador
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS rtp_sesiones (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            jugador_id  INTEGER NOT NULL,
+            lesion_id   INTEGER,
+            fecha       TEXT    NOT NULL,
+            etapa_id    INTEGER NOT NULL,
+            fisio       TEXT,
+            avanza      INTEGER DEFAULT 0,
+            notas       TEXT,
+            FOREIGN KEY (jugador_id) REFERENCES jugadores(id),
+            FOREIGN KEY (etapa_id)   REFERENCES rtp_etapas(id)
+        )
+    """)
+
+    # Resultados por drill dentro de cada sesión
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS rtp_resultados (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            sesion_id   INTEGER NOT NULL,
+            drill_id    INTEGER NOT NULL,
+            completado  INTEGER DEFAULT 1,
+            eva         INTEGER NOT NULL,
+            confianza   INTEGER NOT NULL,
+            notas       TEXT,
+            FOREIGN KEY (sesion_id) REFERENCES rtp_sesiones(id),
+            FOREIGN KEY (drill_id)  REFERENCES rtp_drills(id)
+        )
+    """)
+
     conn.commit()
     print("  [OK] Tablas creadas")
+
+
+# ============================================================
+# PASO RTP: INSERTAR PROTOCOLO BASE
+# ============================================================
+
+# Etapas del protocolo RTP con sus drills de arranque
+PROTOCOLO_RTP = [
+    {
+        "orden": 1,
+        "nombre": "Reposo / Control inflamatorio",
+        "descripcion": "Reducir inflamación y dolor. Sin carga sobre la zona lesionada.",
+        "eva_max": 2,
+        "confianza_min": 5,
+        "drills": [
+            ("Crioterapia y compresión",        "10-15 min de hielo + compresión en zona lesionada"),
+            ("Movilidad pasiva articular",       "Movilidad asistida sin dolor en arco libre"),
+            ("Isométricos sin carga",            "Contracción sin movimiento articular, sin dolor"),
+            ("Deambulación sin cojera",          "Caminar en plano sin compensaciones"),
+        ]
+    },
+    {
+        "orden": 2,
+        "nombre": "Movilidad y activación",
+        "descripcion": "Recuperar rango articular y activación muscular básica.",
+        "eva_max": 3,
+        "confianza_min": 6,
+        "drills": [
+            ("Bicicleta estática suave",         "15-20 min cadencia baja, sin resistencia"),
+            ("Propiocepción estática",           "Apoyo monopodal sobre superficie estable 3×30s"),
+            ("Movilidad activa completa",        "Arco completo sin asistencia, sin compensar"),
+            ("Ejercicios de fuerza en piscina",  "Marcha y elevaciones en agua (descarga)"),
+        ]
+    },
+    {
+        "orden": 3,
+        "nombre": "Aeróbico en línea recta",
+        "descripcion": "Carga aeróbica progresiva sin cambios de dirección.",
+        "eva_max": 2,
+        "confianza_min": 7,
+        "drills": [
+            ("Trote suave 10 min",               "Ritmo conversacional, plano, superficie blanda"),
+            ("Aceleración progresiva 60-70-80%", "3 repeticiones × 30m con recuperación completa"),
+            ("Carrera hacia atrás (backpedal)",  "15m × 4 repeticiones a velocidad controlada"),
+            ("Skipping y talones a glúteos",     "Coordinación sin impacto lateral, 3×20m"),
+        ]
+    },
+    {
+        "orden": 4,
+        "nombre": "Cambios de dirección",
+        "descripcion": "Introducir estrés lateral y multidireccional.",
+        "eva_max": 2,
+        "confianza_min": 7,
+        "drills": [
+            ("Cambios de dirección a 45°",       "Cono en T, 4 repeticiones a 70% velocidad"),
+            ("Cambios de dirección a 90°",       "Illinois test modificado, 4 repeticiones"),
+            ("Sprint con desaceleración",        "20m sprint + freno, 4 repeticiones"),
+            ("Saltos bipodales en profundidad",  "Drop jump desde 30cm, aterrizaje controlado"),
+        ]
+    },
+    {
+        "orden": 5,
+        "nombre": "Específico con pelota",
+        "descripcion": "Reintroducir el balón en situaciones controladas.",
+        "eva_max": 1,
+        "confianza_min": 8,
+        "drills": [
+            ("Pases cortos y recepción",         "2 jugadores, 5-10m, sin presión, ambos perfiles"),
+            ("Conducción y cambio de dirección", "Slalom a 80% con pelota"),
+            ("Saltos monopodales con pelota",    "Cabeceo liviano desde punto fijo"),
+            ("Remate de media distancia",        "Sin oposición, bola parada, 5 remates cada perfil"),
+        ]
+    },
+    {
+        "orden": 6,
+        "nombre": "Entrenamiento grupal sin restricción",
+        "descripcion": "Integración completa al grupo. Último paso antes de la competencia.",
+        "eva_max": 0,
+        "confianza_min": 9,
+        "drills": [
+            ("Rondo 4v1 / 5v2",                 "Participación sin restricción de contacto"),
+            ("Juego reducido con presión",       "3v3 o 4v4 en espacio pequeño"),
+            ("Situación de juego 11v11",         "Entrenamiento colectivo completo sin limitaciones"),
+            ("Duelo 1v1",                        "Entrada al cuerpo autorizada por el fisio"),
+        ]
+    },
+]
+
+
+def insertar_protocolo_rtp(conn):
+    """
+    Inserta las etapas y drills base del protocolo RTP.
+    Usa INSERT OR IGNORE para no duplicar si se reinicializa la DB.
+    """
+    cur = conn.cursor()
+
+    for etapa in PROTOCOLO_RTP:
+        cur.execute("""
+            INSERT OR IGNORE INTO rtp_etapas
+                (orden, nombre, descripcion, eva_max, confianza_min)
+            VALUES (?, ?, ?, ?, ?)
+        """, (
+            etapa["orden"],
+            etapa["nombre"],
+            etapa["descripcion"],
+            etapa["eva_max"],
+            etapa["confianza_min"],
+        ))
+
+        # Obtener el id de la etapa recién insertada (o la existente)
+        cur.execute("SELECT id FROM rtp_etapas WHERE orden = ?", (etapa["orden"],))
+        etapa_id = cur.fetchone()[0]
+
+        for (nombre_drill, desc_drill) in etapa["drills"]:
+            cur.execute("""
+                INSERT OR IGNORE INTO rtp_drills (etapa_id, nombre, descripcion)
+                SELECT ?, ?, ?
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM rtp_drills WHERE etapa_id = ? AND nombre = ?
+                )
+            """, (etapa_id, nombre_drill, desc_drill, etapa_id, nombre_drill))
+
+    conn.commit()
+    print(f"  [OK] Protocolo RTP: {len(PROTOCOLO_RTP)} etapas cargadas")
 
 
 # ============================================================
@@ -549,6 +731,7 @@ def inicializar_base_datos():
     simular_wellness(conn, jugadores_df)
     simular_lesiones(conn, jugadores_df)
     simular_fuerza(conn, jugadores_df)
+    insertar_protocolo_rtp(conn)
 
     conn.close()
 
