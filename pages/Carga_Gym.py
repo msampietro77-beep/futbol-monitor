@@ -14,12 +14,16 @@ Conceptos clave:
   RPE           : esfuerzo percibido 1-10 (Rate of Perceived Exertion)
 """
 
+import sys
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import sqlite3
-import os
 from datetime import date, timedelta
 
 from metricas import (

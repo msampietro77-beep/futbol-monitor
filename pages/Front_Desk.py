@@ -12,10 +12,14 @@ Las áreas con página propia (Wellness y Fuerza/Gym) tienen acceso directo
 desde el panel de estado.
 """
 
+import sys
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import streamlit as st
 import pandas as pd
 import sqlite3
-import os
 from datetime import date, timedelta
 
 from metricas import (

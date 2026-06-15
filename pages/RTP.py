@@ -13,12 +13,17 @@ Flujo de trabajo:
 Protocolo de 6 etapas iterativo — drills configurables desde la DB.
 """
 
+import sys
+import os
+
+# Garantiza que Streamlit Cloud encuentre metricas.py en el directorio raíz
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import sqlite3
-import os
 from datetime import date
 
 from metricas import (
