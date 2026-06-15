@@ -5,20 +5,19 @@ Dashboard operativo diario para reunión de staff.
 
 Cómo ejecutar:
   streamlit run app.py
+
+Nota Streamlit Cloud:
+  La base de datos no está en GitHub. Al iniciar por primera vez
+  (o si el archivo no existe), se crea automáticamente con datos
+  simulados ejecutando database.py.
 """
 
+import os
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import date, timedelta
-from metricas import (
-    reporte_disponibilidad,
-    resumen_acwr_plantel,
-    cargar_lesiones_activas,
-    calcular_acwr_ewma,
-    cargar_wellness,
-)
 
 
 # ============================================================
@@ -41,6 +40,35 @@ st.markdown("""
     .stMetric label {font-size: 0.85rem;}
 </style>
 """, unsafe_allow_html=True)
+
+
+# ============================================================
+# INICIALIZACIÓN AUTOMÁTICA DE LA BASE DE DATOS
+# Se ejecuta solo si el archivo .db no existe (primer arranque
+# en Streamlit Cloud o entorno nuevo sin la base de datos).
+# ============================================================
+
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "futbol_monitoreo.db")
+
+if not os.path.exists(DB_PATH):
+    with st.spinner("⏳ Primera ejecución: creando base de datos con datos simulados..."):
+        import database
+        database.inicializar_base_datos()
+    st.success("✅ Base de datos creada correctamente. Cargando el sistema...")
+    st.rerun()
+
+
+# ============================================================
+# IMPORTAR MÉTRICAS (después de garantizar que la DB existe)
+# ============================================================
+
+from metricas import (
+    reporte_disponibilidad,
+    resumen_acwr_plantel,
+    cargar_lesiones_activas,
+    calcular_acwr_ewma,
+    cargar_wellness,
+)
 
 
 # ============================================================
