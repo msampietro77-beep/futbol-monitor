@@ -256,6 +256,25 @@ def crear_tablas(conn):
         )
     """)
 
+    # ── EVALUACIONES RTP (Pecci et al. 2026) ────────────────
+    # Historial de evaluaciones clínicas de aptitud deportiva
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS rtp_evaluaciones (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            jugador_id      INTEGER NOT NULL,
+            lesion_id       INTEGER,
+            fecha           TEXT    NOT NULL,
+            tipo_lesion     TEXT    NOT NULL,
+            criterios_json  TEXT    NOT NULL,
+            score_pct       REAL    NOT NULL,
+            decision        TEXT    NOT NULL,
+            evaluador       TEXT,
+            notas           TEXT,
+            FOREIGN KEY (jugador_id) REFERENCES jugadores(id)
+        )
+    """)
+
     conn.commit()
     print("  [OK] Tablas creadas")
 
