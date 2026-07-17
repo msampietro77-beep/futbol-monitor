@@ -15,8 +15,7 @@ Nota Streamlit Cloud:
 import os
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
+from streamlit_echarts import st_echarts, JsCode
 from datetime import date, timedelta
 
 
@@ -291,91 +290,172 @@ alertas_lesionados["alerta"] = "ROJA"
 alertas_todas = pd.concat([alertas_disponibles, alertas_lesionados], ignore_index=True)
 alertas_dict  = dict(zip(alertas_todas["jugador_id"], alertas_todas["alerta"]))
 
-# Colores y grosores por nivel de alerta
-COLOR_LINEA = {
-    "ROJA":     "#FF4B4B",
-    "NARANJA":  "#FF8C00",
-    "AMARILLA": "#D4A800",
-    "VERDE":    "#CCCCCC",
+# Colores EQUIPOPHYSICAL por nivel de alerta clínica
+COLOR_LINEA_EC = {
+    "ROJA":     "#d63031",
+    "NARANJA":  "#F47920",
+    "AMARILLA": "#e8a020",
+    "VERDE":    "rgba(180,180,180,0.22)",  # gris tenue — contexto de fondo
 }
-GROSOR_LINEA = {"ROJA": 2.5, "NARANJA": 2.5, "AMARILLA": 2.0, "VERDE": 0.8}
-OPACIDAD     = {"ROJA": 1.0, "NARANJA": 1.0, "AMARILLA": 0.9, "VERDE": 0.30}
+GROSOR_LINEA_EC = {"ROJA": 2.5, "NARANJA": 2.5, "AMARILLA": 2.0, "VERDE": 0.8}
 
-fig_evol = go.Figure()
+# Límite superior del eje Y con margen visual
+y_max_acwr = round(max(2.2, float(acwr_30d["acwr"].max()) * 1.15), 2)
 
-# Zonas de fondo coloreadas (de abajo hacia arriba)
-y_max_acwr = max(2.2, float(acwr_30d["acwr"].max()) * 1.15)
-fig_evol.add_hrect(y0=0,    y1=0.8,       fillcolor="#FFD700", opacity=0.07, line_width=0,
-                   annotation_text="Desentren.", annotation_position="top left",
-                   annotation_font=dict(size=10, color="#999"))
-fig_evol.add_hrect(y0=0.8,  y1=1.3,       fillcolor="#21C354", opacity=0.07, line_width=0,
-                   annotation_text="Óptima", annotation_position="top left",
-                   annotation_font=dict(size=10, color="#999"))
-fig_evol.add_hrect(y0=1.3,  y1=1.5,       fillcolor="#FF8C00", opacity=0.09, line_width=0,
-                   annotation_text="Precaución", annotation_position="top left",
-                   annotation_font=dict(size=10, color="#999"))
-fig_evol.add_hrect(y0=1.5,  y1=y_max_acwr, fillcolor="#FF4B4B", opacity=0.07, line_width=0,
-                   annotation_text="Alto riesgo", annotation_position="top left",
-                   annotation_font=dict(size=10, color="#999"))
-
-# Líneas individuales por jugador
-for jugador_id, grupo in acwr_30d.groupby("jugador_id"):
-    alerta  = alertas_dict.get(jugador_id, "VERDE")
-    nombre  = grupo["jugador"].iloc[0]
-    visible = True if alerta != "VERDE" else "legendonly"
-
-    fig_evol.add_trace(go.Scatter(
-        x=grupo["fecha"],
-        y=grupo["acwr"],
-        mode="lines",
-        name=nombre,
-        line=dict(color=COLOR_LINEA[alerta], width=GROSOR_LINEA[alerta]),
-        opacity=OPACIDAD[alerta],
-        showlegend=(alerta != "VERDE"),
-        hovertemplate=f"<b>{nombre}</b><br>ACWR: %{{y:.2f}}<br>%{{x|%d/%m/%Y}}<extra></extra>",
-    ))
-
-# Promedio del equipo (línea negra gruesa)
+# Promedio diario del equipo
 prom_diario = acwr_30d.groupby("fecha")["acwr"].mean().reset_index()
-fig_evol.add_trace(go.Scatter(
-    x=prom_diario["fecha"],
-    y=prom_diario["acwr"],
-    mode="lines",
-    name="📊 Promedio equipo",
-    line=dict(color="#1a1a2e", width=3.5),
-    hovertemplate="<b>Promedio equipo</b><br>ACWR: %{y:.2f}<br>%{x|%d/%m/%Y}<extra></extra>",
-))
 
-# Líneas de referencia punteadas
-for y_val, label, color in [
-    (0.8, "0.8 — Límite inferior", "#B8860B"),
-    (1.3, "1.3 — Zona precaución", "#FF6600"),
-    (1.5, "1.5 — Alto riesgo",     "#CC0000"),
-]:
-    fig_evol.add_hline(
-        y=y_val, line_dash="dot", line_color=color, line_width=1.5,
-        annotation_text=label, annotation_position="right",
-        annotation_font=dict(size=11, color=color),
-    )
+# Tooltip: filtra jugadores sin alerta (prefijo "_") para no saturar el popup
+_acwr_tooltip = JsCode("""
+function(params) {
+    var date = params[0].axisValueLabel;
+    var html = '<b>' + date + '</b><br/>';
+    params.forEach(function(p) {
+        if (!p.seriesName.startsWith('_')) {
+            html += p.marker + ' ' + p.seriesName +
+                    ': <b>' + p.value[1].toFixed(2) + '</b><br/>';
+        }
+    });
+    return html;
+}
+""")
 
-fig_evol.update_layout(
-    xaxis_title="",
-    yaxis_title="ACWR",
-    plot_bgcolor="rgba(0,0,0,0)",
-    paper_bgcolor="rgba(0,0,0,0)",
-    height=430,
-    hovermode="x unified",
-    yaxis=dict(range=[0, y_max_acwr]),
-    xaxis=dict(tickformat="%d/%m"),
-    legend=dict(
-        title="Jugadores con alerta",
-        orientation="v", x=1.01, y=1,
-        font=dict(size=11),
-    ),
-    margin=dict(t=30, b=20, l=50, r=180),
-)
+_series_acwr = []
+_nombres_con_alerta = []
 
-st.plotly_chart(fig_evol, width='stretch')
+# ── Zonas de fondo (markArea en serie vacía invisible) ──────────────────
+# Cada zona corresponde a un rango clínico del ACWR (Gabbett 2016)
+_series_acwr.append({
+    "type": "line",
+    "data": [],
+    "silent": True,
+    "legendHoverLink": False,
+    "markArea": {
+        "silent": True,
+        "label": {
+            "show": True,
+            "position": "insideTopLeft",
+            "fontSize": 10,
+            "color": "#898781",
+        },
+        "data": [
+            [{"yAxis": 0,   "name": "Desentren.",
+              "itemStyle": {"color": "rgba(232,160,32,0.07)"}},  {"yAxis": 0.8}],
+            [{"yAxis": 0.8, "name": "Óptima",
+              "itemStyle": {"color": "rgba(26,158,92,0.07)"}},   {"yAxis": 1.3}],
+            [{"yAxis": 1.3, "name": "Precaución",
+              "itemStyle": {"color": "rgba(244,121,32,0.08)"}},  {"yAxis": 1.5}],
+            [{"yAxis": 1.5, "name": "Alto riesgo",
+              "itemStyle": {"color": "rgba(214,48,49,0.07)"}},   {"yAxis": y_max_acwr}],
+        ],
+    },
+})
+
+# ── Una línea por jugador ────────────────────────────────────────────────
+# Jugadores sin alerta usan prefijo "_" → aparecen en chart pero no en leyenda ni tooltip
+for jugador_id, grupo in acwr_30d.groupby("jugador_id"):
+    alerta = alertas_dict.get(jugador_id, "VERDE")
+    nombre = grupo["jugador"].iloc[0]
+    nombre_serie = nombre if alerta != "VERDE" else f"_{nombre}"
+    data_pts = [
+        [r["fecha"].strftime("%Y-%m-%d"), round(float(r["acwr"]), 3)]
+        for _, r in grupo.sort_values("fecha").iterrows()
+    ]
+    _series_acwr.append({
+        "name": nombre_serie,
+        "type": "line",
+        "data": data_pts,
+        "smooth": 0.3,
+        "symbol": "none",
+        "lineStyle": {"color": COLOR_LINEA_EC[alerta], "width": GROSOR_LINEA_EC[alerta]},
+        "itemStyle": {"color": COLOR_LINEA_EC[alerta]},
+        "emphasis": {"disabled": alerta == "VERDE"},
+    })
+    if alerta != "VERDE":
+        _nombres_con_alerta.append(nombre)
+
+# ── Promedio del equipo (línea oscura destacada + markLine de referencia) ──
+_series_acwr.append({
+    "name": "📊 Promedio equipo",
+    "type": "line",
+    "data": [
+        [r["fecha"].strftime("%Y-%m-%d"), round(float(r["acwr"]), 3)]
+        for _, r in prom_diario.sort_values("fecha").iterrows()
+    ],
+    "smooth": 0.3,
+    "symbol": "none",
+    "z": 10,
+    "lineStyle": {"color": "#3D3D3D", "width": 3.5},
+    "itemStyle": {"color": "#3D3D3D"},
+    # Umbrales clínicos como líneas punteadas (Gabbett 2016)
+    "markLine": {
+        "symbol": ["none", "none"],
+        "silent": True,
+        "lineStyle": {"type": "dashed", "width": 1.5},
+        "label": {"position": "insideEndTop", "fontSize": 10},
+        "data": [
+            {"yAxis": 0.8,
+             "lineStyle": {"color": "#C85E10"},
+             "label": {"formatter": "0.8 — Límite inferior", "color": "#C85E10"}},
+            {"yAxis": 1.3,
+             "lineStyle": {"color": "#F47920"},
+             "label": {"formatter": "1.3 — Precaución", "color": "#F47920"}},
+            {"yAxis": 1.5,
+             "lineStyle": {"color": "#d63031"},
+             "label": {"formatter": "1.5 — Alto riesgo", "color": "#d63031"}},
+        ],
+    },
+})
+
+option_acwr = {
+    "backgroundColor": "transparent",
+    # Animación de entrada suave al renderizar
+    "animation": True,
+    "animationDuration": 700,
+    "animationEasing": "cubicOut",
+    "tooltip": {
+        "trigger": "axis",
+        "axisPointer": {
+            "type": "cross",
+            "crossStyle": {"color": "#cccccc"},
+            "label": {"backgroundColor": "#3D3D3D"},
+        },
+        "backgroundColor": "rgba(50,50,50,0.88)",
+        "borderWidth": 0,
+        "textStyle": {"color": "#ffffff", "fontSize": 12},
+        "formatter": _acwr_tooltip,
+    },
+    "legend": {
+        # Solo jugadores con alerta + promedio aparecen en la leyenda
+        "data": _nombres_con_alerta + ["📊 Promedio equipo"],
+        "right": 10,
+        "top": 10,
+        "orient": "vertical",
+        "icon": "roundRect",
+        "textStyle": {"fontSize": 11, "color": "#3D3D3D"},
+    },
+    "grid": {"top": 40, "bottom": 50, "left": 60, "right": 190, "containLabel": False},
+    "xAxis": {
+        "type": "time",
+        "axisLabel": {"formatter": "{MM}/{dd}", "fontSize": 11, "color": "#898781"},
+        "axisLine": {"lineStyle": {"color": "#c3c2b7"}},
+        "splitLine": {"show": False},
+    },
+    "yAxis": {
+        "type": "value",
+        "name": "ACWR",
+        "nameTextStyle": {"color": "#898781", "fontSize": 11},
+        "min": 0,
+        "max": y_max_acwr,
+        "axisLabel": {"color": "#898781", "fontSize": 11},
+        "axisLine": {"show": True, "lineStyle": {"color": "#c3c2b7"}},
+        # Grilla horizontal suave (hairlines)
+        "splitLine": {"lineStyle": {"color": "#e1e0d9", "type": "dashed", "width": 1}},
+    },
+    "series": _series_acwr,
+}
+
+st_echarts(options=option_acwr, height="430px")
 
 st.divider()
 
@@ -408,18 +488,62 @@ with col_graf:
     }
     conteo_zonas["zona_label"] = conteo_zonas["zona"].map(etiquetas)
 
-    fig_dist = px.bar(
-        conteo_zonas, x="zona_label", y="cantidad",
-        color="zona_label", color_discrete_map=colores_zona,
-        text="cantidad", title="Distribución por zona ACWR",
-    )
-    fig_dist.update_layout(
-        showlegend=False, xaxis_title="", yaxis_title="Jugadores",
-        plot_bgcolor="rgba(0,0,0,0)", height=280,
-        margin=dict(t=40, b=10, l=10, r=10),
-    )
-    fig_dist.update_traces(textposition="outside")
-    st.plotly_chart(fig_dist, width='stretch')
+    # Semáforo del plantel — donut con distribución por zona ACWR
+    # El anillo resalta la proporción de jugadores en cada estado clínico
+    _colores_donut = {
+        "alto_riesgo":      "#d63031",   # rojo EQUIPOPHYSICAL
+        "precaucion":       "#F47920",   # naranja EQUIPOPHYSICAL
+        "optima":           "#1a9e5c",   # verde alertas
+        "desentrenamiento": "#e8a020",   # ámbar (zona sub-óptima)
+        "sin datos":        "#c3c2b7",   # gris neutro
+    }
+    _donut_data = [
+        {
+            "name": etiquetas.get(r["zona"], r["zona"]),
+            "value": int(r["cantidad"]),
+            "itemStyle": {"color": _colores_donut.get(r["zona"], "#999")},
+        }
+        for _, r in conteo_zonas.iterrows()
+    ]
+    option_dist = {
+        "backgroundColor": "transparent",
+        "animation": True,
+        "animationDuration": 700,
+        "animationEasing": "cubicOut",
+        "title": {
+            "text": "Distribución por zona ACWR",
+            "textStyle": {"fontSize": 13, "color": "#3D3D3D", "fontWeight": "normal"},
+            "top": 5,
+            "left": "center",
+        },
+        "tooltip": {
+            "trigger": "item",
+            "formatter": "{b}: {c} jugadores ({d}%)",
+            "backgroundColor": "rgba(50,50,50,0.88)",
+            "borderWidth": 0,
+            "textStyle": {"color": "#fff", "fontSize": 12},
+        },
+        "legend": {
+            "orient": "vertical",
+            "right": "2%",
+            "top": "center",
+            "icon": "circle",
+            "textStyle": {"fontSize": 11, "color": "#3D3D3D"},
+        },
+        "series": [{
+            "type": "pie",
+            "radius": ["42%", "68%"],     # forma de anillo (donut)
+            "center": ["38%", "58%"],
+            "data": _donut_data,
+            # Etiqueta con cantidad dentro de cada segmento
+            "label": {"show": True, "formatter": "{c}", "fontSize": 14, "fontWeight": "bold"},
+            "labelLine": {"show": False},
+            "emphasis": {"scale": True, "scaleSize": 8},
+            # Borde blanco entre segmentos para separación visual (2px gap)
+            "itemStyle": {"borderRadius": 4, "borderColor": "#fff", "borderWidth": 2},
+        }],
+    }
+    st_echarts(options=option_dist, height="280px")
 
     st.markdown("""
     **Zonas ACWR:**
@@ -493,42 +617,107 @@ wellness_diario["estado"] = wellness_diario["promedio"].apply(_nivel_wellness)
 col_bien, col_det = st.columns([2, 1])
 
 with col_bien:
-    fig_wellness = px.bar(
-        wellness_diario,
-        x="fecha", y="promedio",
-        color="estado",
-        color_discrete_map={
-            "Bueno  (≥3.5)":      "#21C354",
-            "Regular  (2.8–3.5)": "#FF8C00",
-            "Bajo  (<2.8)":       "#FF4B4B",
+    # Barras de wellness — color por estado clínico (paleta EQUIPOPHYSICAL)
+    _color_por_estado = {
+        "Bueno  (≥3.5)":      "#1a9e5c",   # verde alertas
+        "Regular  (2.8–3.5)": "#F47920",   # naranja principal
+        "Bajo  (<2.8)":       "#d63031",   # rojo alertas
+    }
+    _fechas_w  = [r["fecha"].strftime("%d/%m") for _, r in wellness_diario.iterrows()]
+    _barras_w  = [
+        {
+            "value": round(float(r["promedio"]), 2),
+            "itemStyle": {
+                "color": _color_por_estado.get(r["estado"], "#999"),
+                "borderRadius": [4, 4, 0, 0],   # esquinas redondeadas arriba
+            },
+        }
+        for _, r in wellness_diario.iterrows()
+    ]
+
+    option_wellness = {
+        "backgroundColor": "transparent",
+        # elasticOut: las barras "rebotan" al aterrizar — animación atractiva
+        "animation": True,
+        "animationDuration": 700,
+        "animationEasing": "elasticOut",
+        "tooltip": {
+            "trigger": "axis",
+            "formatter": JsCode("""
+function(params) {
+    var p = params[0];
+    var estado = p.value >= 3.5 ? '✅ Bueno'
+               : p.value >= 2.8 ? '⚠️ Regular'
+               : '🔴 Bajo';
+    return '<b>' + p.name + '</b><br/>' +
+           'Wellness: <b>' + p.value.toFixed(2) + '</b><br/>' + estado;
+}
+"""),
+            "backgroundColor": "rgba(50,50,50,0.88)",
+            "borderWidth": 0,
+            "textStyle": {"color": "#fff", "fontSize": 12},
         },
-        text=wellness_diario["promedio"].apply(lambda x: f"{x:.2f}"),
-        title="Wellness diario del equipo",
-        labels={"fecha": "", "promedio": "Wellness (1–5)", "estado": "Estado"},
-    )
-    fig_wellness.add_hline(
-        y=3.5, line_dash="dash", line_color="#21C354", line_width=1.5,
-        annotation_text="3.5 — Umbral óptimo",
-        annotation_position="right",
-        annotation_font=dict(size=11, color="#21C354"),
-    )
-    fig_wellness.add_hline(
-        y=2.8, line_dash="dash", line_color="#FF4B4B", line_width=1.5,
-        annotation_text="2.8 — Umbral bajo",
-        annotation_position="right",
-        annotation_font=dict(size=11, color="#FF4B4B"),
-    )
-    fig_wellness.update_layout(
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        height=360,
-        yaxis=dict(range=[0, 5.5]),
-        xaxis=dict(tickformat="%d/%m"),
-        legend=dict(orientation="h", y=-0.25, title=""),
-        margin=dict(t=40, b=20, l=50, r=120),
-    )
-    fig_wellness.update_traces(textposition="outside")
-    st.plotly_chart(fig_wellness, width='stretch')
+        "grid": {"top": 50, "bottom": 65, "left": 55, "right": 135},
+        "xAxis": {
+            "type": "category",
+            "data": _fechas_w,
+            "axisLabel": {"fontSize": 11, "color": "#898781", "rotate": 30},
+            "axisLine": {"lineStyle": {"color": "#c3c2b7"}},
+            "splitLine": {"show": False},
+        },
+        "yAxis": {
+            "type": "value",
+            "name": "Wellness (1–5)",
+            "nameTextStyle": {"color": "#898781", "fontSize": 11},
+            "min": 0,
+            "max": 5.5,
+            "axisLabel": {"color": "#898781", "fontSize": 11},
+            "splitLine": {"lineStyle": {"color": "#e1e0d9", "type": "dashed", "width": 1}},
+        },
+        "series": [{
+            "type": "bar",
+            "data": _barras_w,
+            "barMaxWidth": 42,
+            # Valor encima de cada barra (etiqueta directa — evita leyenda)
+            "label": {
+                "show": True,
+                "position": "top",
+                "formatter": JsCode("function(p){ return p.value.toFixed(2); }"),
+                "fontSize": 11,
+                "color": "#3D3D3D",
+                "fontWeight": "bold",
+            },
+            # Umbrales clínicos como líneas de referencia punteadas
+            "markLine": {
+                "symbol": ["none", "none"],
+                "silent": True,
+                "data": [
+                    {
+                        "yAxis": 3.5,
+                        "lineStyle": {"type": "dashed", "color": "#1a9e5c", "width": 1.5},
+                        "label": {
+                            "formatter": "3.5 — Óptimo",
+                            "color": "#1a9e5c",
+                            "position": "insideEndTop",
+                            "fontSize": 10,
+                        },
+                    },
+                    {
+                        "yAxis": 2.8,
+                        "lineStyle": {"type": "dashed", "color": "#d63031", "width": 1.5},
+                        "label": {
+                            "formatter": "2.8 — Umbral bajo",
+                            "color": "#d63031",
+                            "position": "insideEndTop",
+                            "fontSize": 10,
+                        },
+                    },
+                ],
+            },
+        }],
+    }
+
+    st_echarts(options=option_wellness, height="360px")
 
 with col_det:
     # Desglose por ítem de wellness (promedio de los últimos 14 días)
