@@ -273,6 +273,38 @@ st.dataframe(styled_semaforo, width='stretch', height=500)
 st.divider()
 
 
+# --- Tema visual compartido (Inter + paleta EQUIPOPHYSICAL) ---
+_EP_FONT    = "'Inter', 'Segoe UI', sans-serif"
+_EP_TOOLTIP = {
+    "backgroundColor": "#1e1e2e",
+    "borderWidth": 0,
+    "borderRadius": 8,
+    "extraCssText": "box-shadow:0 4px 12px rgba(0,0,0,.25);",
+    "textStyle": {"color": "#ffffff", "fontSize": 12, "fontFamily": "'Inter','Segoe UI',sans-serif"},
+}
+_EP_LEGEND = {
+    "bottom": 0,
+    "left": "center",
+    "orient": "horizontal",
+    "icon": "circle",
+    "itemWidth": 8,
+    "itemHeight": 8,
+    "itemGap": 24,
+    "textStyle": {"fontSize": 11, "color": "#888888", "fontFamily": "'Inter','Segoe UI',sans-serif"},
+}
+_EP_ANIM = {
+    "backgroundColor": "transparent",
+    "animation": True,
+    "animationDuration": 800,
+    "animationEasing": "cubicOut",
+    "animationDurationUpdate": 0,
+}
+
+def _ep_gradient(top_color, bot_color):
+    return {"type": "linear", "x": 0, "y": 0, "x2": 0, "y2": 1,
+            "colorStops": [{"offset": 0, "color": top_color},
+                           {"offset": 1, "color": bot_color}]}
+
 # ============================================================
 # SECCIÓN 3: EVOLUCIÓN ACWR — ÚLTIMOS 30 DÍAS
 # ============================================================
@@ -408,49 +440,39 @@ _series_acwr.append({
 })
 
 option_acwr = {
-    "backgroundColor": "transparent",
-    # Animación de entrada suave al renderizar
-    "animation": True,
-    "animationDuration": 700,
-    "animationEasing": "cubicOut",
+    **_EP_ANIM,
     "tooltip": {
+        **_EP_TOOLTIP,
         "trigger": "axis",
         "axisPointer": {
             "type": "cross",
-            "crossStyle": {"color": "#cccccc"},
+            "crossStyle": {"color": "#555"},
             "label": {"backgroundColor": "#3D3D3D"},
         },
-        "backgroundColor": "rgba(50,50,50,0.88)",
-        "borderWidth": 0,
-        "textStyle": {"color": "#ffffff", "fontSize": 12},
         "formatter": _acwr_tooltip,
     },
     "legend": {
-        # Solo jugadores con alerta + promedio aparecen en la leyenda
+        **_EP_LEGEND,
         "data": _nombres_con_alerta + ["📊 Promedio equipo"],
-        "right": 10,
-        "top": 10,
-        "orient": "vertical",
-        "icon": "roundRect",
-        "textStyle": {"fontSize": 11, "color": "#3D3D3D"},
     },
-    "grid": {"top": 40, "bottom": 50, "left": 60, "right": 190, "containLabel": False},
+    "grid": {"top": 40, "bottom": 80, "left": 60, "right": 24, "containLabel": False},
     "xAxis": {
         "type": "time",
-        "axisLabel": {"formatter": "{MM}/{dd}", "fontSize": 11, "color": "#898781"},
-        "axisLine": {"lineStyle": {"color": "#c3c2b7"}},
+        "axisLabel": {"formatter": "{MM}/{dd}", "fontSize": 12, "color": "#666666", "fontFamily": _EP_FONT},
+        "axisLine": {"show": False},
+        "axisTick": {"show": False},
         "splitLine": {"show": False},
     },
     "yAxis": {
         "type": "value",
         "name": "ACWR",
-        "nameTextStyle": {"color": "#898781", "fontSize": 11},
+        "nameTextStyle": {"color": "#888888", "fontSize": 11, "fontFamily": _EP_FONT},
         "min": 0,
         "max": y_max_acwr,
-        "axisLabel": {"color": "#898781", "fontSize": 11},
-        "axisLine": {"show": True, "lineStyle": {"color": "#c3c2b7"}},
-        # Grilla horizontal suave (hairlines)
-        "splitLine": {"lineStyle": {"color": "#e1e0d9", "type": "dashed", "width": 1}},
+        "axisLabel": {"color": "#666666", "fontSize": 12, "fontFamily": _EP_FONT},
+        "axisLine": {"show": False},
+        "axisTick": {"show": False},
+        "splitLine": {"lineStyle": {"color": "#f0f0f0", "type": "solid", "width": 1}},
     },
     "series": _series_acwr,
 }
@@ -506,41 +528,34 @@ with col_graf:
         for _, r in conteo_zonas.iterrows()
     ]
     option_dist = {
-        "backgroundColor": "transparent",
-        "animation": True,
-        "animationDuration": 700,
-        "animationEasing": "cubicOut",
+        **_EP_ANIM,
         "title": {
             "text": "Distribución por zona ACWR",
-            "textStyle": {"fontSize": 13, "color": "#3D3D3D", "fontWeight": "normal"},
+            "textStyle": {"fontSize": 15, "color": "#3D3D3D", "fontWeight": "600", "fontFamily": _EP_FONT},
             "top": 5,
             "left": "center",
         },
         "tooltip": {
+            **_EP_TOOLTIP,
             "trigger": "item",
             "formatter": "{b}: {c} jugadores ({d}%)",
-            "backgroundColor": "rgba(50,50,50,0.88)",
-            "borderWidth": 0,
-            "textStyle": {"color": "#fff", "fontSize": 12},
         },
-        "legend": {
-            "orient": "vertical",
-            "right": "2%",
-            "top": "center",
-            "icon": "circle",
-            "textStyle": {"fontSize": 11, "color": "#3D3D3D"},
-        },
+        "legend": {**_EP_LEGEND},
         "series": [{
             "type": "pie",
-            "radius": ["42%", "68%"],     # forma de anillo (donut)
-            "center": ["38%", "58%"],
+            "radius": ["42%", "68%"],
+            "center": ["50%", "45%"],
             "data": _donut_data,
-            # Etiqueta con cantidad dentro de cada segmento
-            "label": {"show": True, "formatter": "{c}", "fontSize": 14, "fontWeight": "bold"},
+            "label": {"show": True, "formatter": "{c}", "fontSize": 14, "fontWeight": "bold", "fontFamily": _EP_FONT},
             "labelLine": {"show": False},
             "emphasis": {"scale": True, "scaleSize": 8},
-            # Borde blanco entre segmentos para separación visual (2px gap)
-            "itemStyle": {"borderRadius": 4, "borderColor": "#fff", "borderWidth": 2},
+            "itemStyle": {
+                "borderRadius": 4,
+                "borderColor": "#fff",
+                "borderWidth": 2,
+                "shadowBlur": 4,
+                "shadowColor": "rgba(0,0,0,0.08)",
+            },
         }],
     }
     st_echarts(options=option_dist, height="280px")
@@ -617,31 +632,30 @@ wellness_diario["estado"] = wellness_diario["promedio"].apply(_nivel_wellness)
 col_bien, col_det = st.columns([2, 1])
 
 with col_bien:
-    # Barras de wellness — color por estado clínico (paleta EQUIPOPHYSICAL)
-    _color_por_estado = {
-        "Bueno  (≥3.5)":      "#1a9e5c",   # verde alertas
-        "Regular  (2.8–3.5)": "#F47920",   # naranja principal
-        "Bajo  (<2.8)":       "#d63031",   # rojo alertas
+    _GRAD_W = {
+        "Bueno  (≥3.5)":      _ep_gradient("#1a9e5c", "rgba(26,158,92,0.40)"),
+        "Regular  (2.8–3.5)": _ep_gradient("#F47920", "rgba(244,121,32,0.40)"),
+        "Bajo  (<2.8)":       _ep_gradient("#d63031", "rgba(214,48,49,0.40)"),
     }
-    _fechas_w  = [r["fecha"].strftime("%d/%m") for _, r in wellness_diario.iterrows()]
-    _barras_w  = [
+    _fechas_w = [r["fecha"].strftime("%d/%m") for _, r in wellness_diario.iterrows()]
+    _barras_w = [
         {
             "value": round(float(r["promedio"]), 2),
             "itemStyle": {
-                "color": _color_por_estado.get(r["estado"], "#999"),
-                "borderRadius": [4, 4, 0, 0],   # esquinas redondeadas arriba
+                "color": _GRAD_W.get(r["estado"], _ep_gradient("#999999", "rgba(153,153,153,0.4)")),
+                "borderRadius": [4, 4, 0, 0],
+                "shadowBlur": 4,
+                "shadowColor": "rgba(0,0,0,0.08)",
             },
         }
         for _, r in wellness_diario.iterrows()
     ]
 
     option_wellness = {
-        "backgroundColor": "transparent",
-        # elasticOut: las barras "rebotan" al aterrizar — animación atractiva
-        "animation": True,
-        "animationDuration": 700,
+        **_EP_ANIM,
         "animationEasing": "elasticOut",
         "tooltip": {
+            **_EP_TOOLTIP,
             "trigger": "axis",
             "formatter": JsCode("""
 function(params) {
@@ -653,32 +667,31 @@ function(params) {
            'Wellness: <b>' + p.value.toFixed(2) + '</b><br/>' + estado;
 }
 """),
-            "backgroundColor": "rgba(50,50,50,0.88)",
-            "borderWidth": 0,
-            "textStyle": {"color": "#fff", "fontSize": 12},
         },
-        "grid": {"top": 50, "bottom": 65, "left": 55, "right": 135},
+        "grid": {"top": 40, "bottom": 60, "left": 60, "right": 24},
         "xAxis": {
             "type": "category",
             "data": _fechas_w,
-            "axisLabel": {"fontSize": 11, "color": "#898781", "rotate": 30},
-            "axisLine": {"lineStyle": {"color": "#c3c2b7"}},
+            "axisLabel": {"fontSize": 12, "color": "#666666", "rotate": 30, "fontFamily": _EP_FONT},
+            "axisLine": {"show": False},
+            "axisTick": {"show": False},
             "splitLine": {"show": False},
         },
         "yAxis": {
             "type": "value",
             "name": "Wellness (1–5)",
-            "nameTextStyle": {"color": "#898781", "fontSize": 11},
+            "nameTextStyle": {"color": "#888888", "fontSize": 11, "fontFamily": _EP_FONT},
             "min": 0,
             "max": 5.5,
-            "axisLabel": {"color": "#898781", "fontSize": 11},
-            "splitLine": {"lineStyle": {"color": "#e1e0d9", "type": "dashed", "width": 1}},
+            "axisLabel": {"color": "#666666", "fontSize": 12, "fontFamily": _EP_FONT},
+            "axisLine": {"show": False},
+            "axisTick": {"show": False},
+            "splitLine": {"lineStyle": {"color": "#f0f0f0", "type": "solid", "width": 1}},
         },
         "series": [{
             "type": "bar",
             "data": _barras_w,
             "barMaxWidth": 42,
-            # Valor encima de cada barra (etiqueta directa — evita leyenda)
             "label": {
                 "show": True,
                 "position": "top",
@@ -686,8 +699,8 @@ function(params) {
                 "fontSize": 11,
                 "color": "#3D3D3D",
                 "fontWeight": "bold",
+                "fontFamily": _EP_FONT,
             },
-            # Umbrales clínicos como líneas de referencia punteadas
             "markLine": {
                 "symbol": ["none", "none"],
                 "silent": True,
@@ -695,22 +708,12 @@ function(params) {
                     {
                         "yAxis": 3.5,
                         "lineStyle": {"type": "dashed", "color": "#1a9e5c", "width": 1.5},
-                        "label": {
-                            "formatter": "3.5 — Óptimo",
-                            "color": "#1a9e5c",
-                            "position": "insideEndTop",
-                            "fontSize": 10,
-                        },
+                        "label": {"formatter": "3.5 — Óptimo", "color": "#1a9e5c", "position": "insideEndTop", "fontSize": 10},
                     },
                     {
                         "yAxis": 2.8,
                         "lineStyle": {"type": "dashed", "color": "#d63031", "width": 1.5},
-                        "label": {
-                            "formatter": "2.8 — Umbral bajo",
-                            "color": "#d63031",
-                            "position": "insideEndTop",
-                            "fontSize": 10,
-                        },
+                        "label": {"formatter": "2.8 — Umbral bajo", "color": "#d63031", "position": "insideEndTop", "fontSize": 10},
                     },
                 ],
             },
