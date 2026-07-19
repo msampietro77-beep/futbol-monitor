@@ -15,9 +15,25 @@ Métricas bajo este estándar:
 
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
+from streamlit_echarts import st_echarts, JsCode
 import sqlite3
+
+# ── Tema visual EQUIPOPHYSICAL ─────────────────────────────────
+_EP_FONT = "'Inter', 'Segoe UI', sans-serif"
+_EP_TOOLTIP = {
+    "backgroundColor": "#1e1e2e", "borderWidth": 0, "borderRadius": 8,
+    "extraCssText": "box-shadow:0 4px 12px rgba(0,0,0,.25);",
+    "textStyle": {"color": "#ffffff", "fontSize": 12, "fontFamily": "'Inter','Segoe UI',sans-serif"},
+}
+_EP_LEGEND = {
+    "bottom": 0, "left": "center", "orient": "horizontal",
+    "icon": "circle", "itemWidth": 8, "itemHeight": 8, "itemGap": 24,
+    "textStyle": {"fontSize": 11, "color": "#888888", "fontFamily": "'Inter','Segoe UI',sans-serif"},
+}
+_EP_ANIM = {
+    "backgroundColor": "transparent", "animation": True,
+    "animationDuration": 800, "animationEasing": "cubicOut", "animationDurationUpdate": 0,
+}
 import os
 
 # ============================================================
@@ -344,31 +360,44 @@ with col_zona:
         "ósea":         "#95A5A6",
     }
 
-    fig_zona = px.bar(
-        lesiones_zona,
-        x="zona_corporal",
-        y="n_lesiones",
-        color="tipo_lesion",
-        barmode="stack",
-        category_orders={"zona_corporal": orden_zonas},
-        color_discrete_map=COLORES_TIPO,
-        title="Lesiones por zona corporal (barras apiladas por tipo)",
-        labels={
-            "zona_corporal": "Zona corporal",
-            "n_lesiones":    "Nº de lesiones",
-            "tipo_lesion":   "Tipo de lesión",
+    # Pivotar para obtener series por tipo_lesion × zona_corporal
+    _pivot_zona = lesiones_zona.pivot_table(
+        index="tipo_lesion", columns="zona_corporal",
+        values="n_lesiones", fill_value=0,
+    )
+    _series_zona = []
+    for tipo, color in COLORES_TIPO.items():
+        if tipo in _pivot_zona.index:
+            _series_zona.append({
+                "name": tipo, "type": "bar", "stack": "zona",
+                "data": [int(_pivot_zona.loc[tipo, z]) if z in _pivot_zona.columns else 0
+                         for z in orden_zonas],
+                "itemStyle": {"color": color},
+                "label": {"show": True, "formatter": JsCode(
+                    "function(p){ return p.value > 0 ? p.value : ''; }"
+                )},
+            })
+
+    option_zona = {
+        **_EP_ANIM,
+        "tooltip": {**_EP_TOOLTIP, "trigger": "axis", "axisPointer": {"type": "shadow"}},
+        "legend": {**_EP_LEGEND, "data": list(COLORES_TIPO.keys())},
+        "grid": {"top": 40, "bottom": 80, "left": 50, "right": 24},
+        "xAxis": {
+            "type": "category", "data": orden_zonas,
+            "axisLabel": {"fontSize": 12, "color": "#666666", "fontFamily": _EP_FONT, "rotate": 30},
+            "axisLine": {"show": False}, "axisTick": {"show": False},
         },
-        text_auto=True,
-    )
-    fig_zona.update_layout(
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        height=380,
-        legend=dict(orientation="h", y=-0.25, title=""),
-        margin=dict(t=40, b=20, l=40, r=20),
-        xaxis_tickangle=-30,
-    )
-    st.plotly_chart(fig_zona, width='stretch')
+        "yAxis": {
+            "type": "value", "name": "Nº de lesiones",
+            "nameTextStyle": {"color": "#888888", "fontSize": 11, "fontFamily": _EP_FONT},
+            "axisLabel": {"color": "#666666", "fontSize": 12, "fontFamily": _EP_FONT},
+            "axisLine": {"show": False}, "axisTick": {"show": False},
+            "splitLine": {"lineStyle": {"color": "#f0f0f0", "width": 1}},
+        },
+        "series": _series_zona,
+    }
+    st_echarts(options=option_zona, height="380px")
 
 with col_tipo:
     # Tabla resumen por tipo de lesión con severidad media
@@ -392,26 +421,29 @@ with col_tipo:
     conteo_tipo = lesiones_df["tipo_lesion"].value_counts().reset_index()
     conteo_tipo.columns = ["tipo", "cantidad"]
 
-    fig_dona = px.pie(
-        conteo_tipo,
-        names="tipo",
-        values="cantidad",
-        color="tipo",
-        color_discrete_map=COLORES_TIPO,
-        hole=0.45,
-        title="Proporción por tipo",
-    )
-    fig_dona.update_layout(
-        height=240,
-        showlegend=False,
-        margin=dict(t=40, b=0, l=0, r=0),
-    )
-    fig_dona.update_traces(
-        textposition="outside",
-        textinfo="percent+label",
-        textfont_size=11,
-    )
-    st.plotly_chart(fig_dona, width='stretch')
+    _dona_data = [
+        {"name": r["tipo"], "value": int(r["cantidad"]),
+         "itemStyle": {"color": COLORES_TIPO.get(r["tipo"], "#999")}}
+        for _, r in conteo_tipo.iterrows()
+    ]
+    option_dona = {
+        **_EP_ANIM,
+        "title": {
+            "text": "Proporción por tipo",
+            "textStyle": {"fontSize": 13, "color": "#3D3D3D", "fontWeight": "600", "fontFamily": _EP_FONT},
+            "top": 4, "left": "center",
+        },
+        "tooltip": {**_EP_TOOLTIP, "trigger": "item", "formatter": "{b}: {c} ({d}%)"},
+        "series": [{
+            "type": "pie", "radius": ["40%", "65%"], "center": ["50%", "58%"],
+            "data": _dona_data,
+            "label": {"show": True, "formatter": "{b}\n{d}%", "fontSize": 10, "fontFamily": _EP_FONT},
+            "labelLine": {"length": 8, "length2": 6},
+            "itemStyle": {"borderColor": "#fff", "borderWidth": 2,
+                          "shadowBlur": 4, "shadowColor": "rgba(0,0,0,0.08)"},
+        }],
+    }
+    st_echarts(options=option_dona, height="260px")
 
 st.divider()
 
@@ -445,58 +477,61 @@ por_mes_total = (
 )
 por_mes_total["acumuladas"] = por_mes_total["n_lesiones"].cumsum()
 
-# Gráfico combinado: barras agrupadas + línea acumulada
-fig_tiempo = go.Figure()
+_meses_str  = [m.strftime("%b %Y") for m in por_mes_total["mes"]]
 
-# Barras por contexto
-colores_contexto = {"Partido": "#E74C3C", "Entrenamiento": "#3498DB"}
-for contexto, color in colores_contexto.items():
-    datos = por_mes_contexto[por_mes_contexto["contexto"] == contexto]
-    fig_tiempo.add_trace(go.Bar(
-        x=datos["mes"],
-        y=datos["n_lesiones"],
-        name=contexto,
-        marker_color=color,
-        opacity=0.85,
-        hovertemplate=f"<b>{contexto}</b><br>Mes: %{{x|%b %Y}}<br>Lesiones: %{{y}}<extra></extra>",
-    ))
+def _mes_data(contexto):
+    d = por_mes_contexto[por_mes_contexto["contexto"] == contexto].set_index("mes")
+    return [int(d.loc[m, "n_lesiones"]) if m in d.index else 0
+            for m in por_mes_total["mes"]]
 
-# Línea acumulada (eje secundario)
-fig_tiempo.add_trace(go.Scatter(
-    x=por_mes_total["mes"],
-    y=por_mes_total["acumuladas"],
-    mode="lines+markers",
-    name="Acumulado total",
-    line=dict(color="#2C3E50", width=2.5),
-    marker=dict(size=7),
-    yaxis="y2",
-    hovertemplate="<b>Acumulado</b>: %{y}<br>%{x|%b %Y}<extra></extra>",
-))
-
-fig_tiempo.update_layout(
-    title="Lesiones por mes — Entrenamiento vs Partido (barras) · Acumulado (línea)",
-    barmode="group",
-    xaxis=dict(tickformat="%b %Y", tickangle=-30, title=""),
-    yaxis=dict(
-        title="Lesiones nuevas / mes",
-        showgrid=True,
-        gridcolor="rgba(0,0,0,0.06)",
-    ),
-    yaxis2=dict(
-        title="Lesiones acumuladas",
-        overlaying="y",
-        side="right",
-        showgrid=False,
-    ),
-    plot_bgcolor="rgba(0,0,0,0)",
-    paper_bgcolor="rgba(0,0,0,0)",
-    height=400,
-    legend=dict(orientation="h", y=-0.25, title=""),
-    margin=dict(t=50, b=20, l=60, r=60),
-    hovermode="x unified",
-)
-
-st.plotly_chart(fig_tiempo, width='stretch')
+option_tiempo = {
+    **_EP_ANIM,
+    "tooltip": {**_EP_TOOLTIP, "trigger": "axis", "axisPointer": {"type": "shadow"}},
+    "legend": {**_EP_LEGEND, "data": ["Partido", "Entrenamiento", "Acumulado"]},
+    "grid": {"top": 40, "bottom": 80, "left": 55, "right": 55},
+    "xAxis": {
+        "type": "category", "data": _meses_str,
+        "axisLabel": {"fontSize": 12, "color": "#666666", "fontFamily": _EP_FONT, "rotate": 30},
+        "axisLine": {"show": False}, "axisTick": {"show": False},
+    },
+    "yAxis": [
+        {
+            "type": "value", "name": "Lesiones/mes",
+            "nameTextStyle": {"color": "#888888", "fontSize": 10, "fontFamily": _EP_FONT},
+            "axisLabel": {"color": "#666666", "fontSize": 11, "fontFamily": _EP_FONT},
+            "axisLine": {"show": False}, "axisTick": {"show": False},
+            "splitLine": {"lineStyle": {"color": "#f0f0f0", "width": 1}},
+        },
+        {
+            "type": "value", "name": "Acumuladas",
+            "nameTextStyle": {"color": "#888888", "fontSize": 10, "fontFamily": _EP_FONT},
+            "axisLabel": {"color": "#666666", "fontSize": 11, "fontFamily": _EP_FONT},
+            "axisLine": {"show": False}, "axisTick": {"show": False},
+            "splitLine": {"show": False},
+            "position": "right",
+        },
+    ],
+    "series": [
+        {
+            "name": "Partido", "type": "bar", "yAxisIndex": 0,
+            "data": _mes_data("Partido"),
+            "itemStyle": {"color": "#E74C3C", "borderRadius": [4, 4, 0, 0]},
+        },
+        {
+            "name": "Entrenamiento", "type": "bar", "yAxisIndex": 0,
+            "data": _mes_data("Entrenamiento"),
+            "itemStyle": {"color": "#3498DB", "borderRadius": [4, 4, 0, 0]},
+        },
+        {
+            "name": "Acumulado", "type": "line", "yAxisIndex": 1,
+            "data": por_mes_total["acumuladas"].tolist(),
+            "symbol": "circle", "symbolSize": 7,
+            "lineStyle": {"color": "#2C3E50", "width": 2.5},
+            "itemStyle": {"color": "#2C3E50"},
+        },
+    ],
+}
+st_echarts(options=option_tiempo, height="400px")
 
 # Mini-métricas del gráfico
 c1, c2, c3 = st.columns(3)

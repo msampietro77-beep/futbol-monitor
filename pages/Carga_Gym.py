@@ -21,9 +21,33 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
+from streamlit_echarts import st_echarts, JsCode
 import sqlite3
+
+# ── Tema visual EQUIPOPHYSICAL (espejo de app.py) ──────────────
+_EP_FONT = "'Inter', 'Segoe UI', sans-serif"
+_EP_TOOLTIP = {
+    "backgroundColor": "#1e1e2e", "borderWidth": 0, "borderRadius": 8,
+    "extraCssText": "box-shadow:0 4px 12px rgba(0,0,0,.25);",
+    "textStyle": {"color": "#ffffff", "fontSize": 12, "fontFamily": "'Inter','Segoe UI',sans-serif"},
+}
+_EP_LEGEND = {
+    "bottom": 0, "left": "center", "orient": "horizontal",
+    "icon": "circle", "itemWidth": 8, "itemHeight": 8, "itemGap": 24,
+    "textStyle": {"fontSize": 11, "color": "#888888", "fontFamily": "'Inter','Segoe UI',sans-serif"},
+}
+_EP_ANIM = {
+    "backgroundColor": "transparent", "animation": True,
+    "animationDuration": 800, "animationEasing": "cubicOut", "animationDurationUpdate": 0,
+}
+
+def _ep_gradient(top_color, bot_color):
+    return {"type": "linear", "x": 0, "y": 0, "x2": 0, "y2": 1,
+            "colorStops": [{"offset": 0, "color": top_color}, {"offset": 1, "color": bot_color}]}
+
+def _ep_grad_h(left_color, right_color):
+    return {"type": "linear", "x": 0, "y": 0, "x2": 1, "y2": 0,
+            "colorStops": [{"offset": 0, "color": left_color}, {"offset": 1, "color": right_color}]}
 from datetime import date, timedelta
 
 from metricas import (
@@ -288,48 +312,45 @@ with tab_analisis:
     if not tendencia.empty:
         st.subheader(f"📈 Evolución del 1RM estimado — {ejercicio_sel}")
 
-        fig_rm = go.Figure()
-
-        # Línea de evolución del 1RM
-        fig_rm.add_trace(go.Scatter(
-            x=tendencia["fecha"],
-            y=tendencia["rm_estimado"],
-            mode="lines+markers",
-            name="1RM estimado",
-            line=dict(color="#1f77b4", width=2.5),
-            marker=dict(size=8, color="#1f77b4"),
-            hovertemplate=(
-                "<b>%{x|%d/%m/%Y}</b><br>"
-                "1RM estimado: <b>%{y:.1f} kg</b><extra></extra>"
-            ),
-        ))
-
-        # Línea de carga real utilizada
-        fig_rm.add_trace(go.Scatter(
-            x=tendencia["fecha"],
-            y=tendencia["carga_kg"],
-            mode="lines+markers",
-            name="Carga utilizada",
-            line=dict(color="#2ca02c", width=1.8, dash="dot"),
-            marker=dict(size=6, color="#2ca02c"),
-            hovertemplate=(
-                "Carga: <b>%{y:.1f} kg</b><extra></extra>"
-            ),
-        ))
-
-        fig_rm.update_layout(
-            xaxis_title="",
-            yaxis_title="Kilogramos (kg)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            height=350,
-            hovermode="x unified",
-            xaxis=dict(tickformat="%d/%m"),
-            legend=dict(orientation="h", y=-0.2, title=""),
-            margin=dict(t=20, b=20, l=50, r=20),
-        )
-
-        st.plotly_chart(fig_rm, use_container_width=True)
+        _fechas_rm = [f.strftime("%d/%m/%y") for f in tendencia["fecha"]]
+        option_rm = {
+            **_EP_ANIM,
+            "tooltip": {
+                **_EP_TOOLTIP, "trigger": "axis",
+                "axisPointer": {"type": "cross", "crossStyle": {"color": "#555"}},
+            },
+            "legend": {**_EP_LEGEND, "data": ["1RM estimado", "Carga utilizada"]},
+            "grid": {"top": 40, "bottom": 70, "left": 60, "right": 24},
+            "xAxis": {
+                "type": "category", "data": _fechas_rm,
+                "axisLabel": {"fontSize": 12, "color": "#666666", "fontFamily": _EP_FONT, "rotate": 30},
+                "axisLine": {"show": False}, "axisTick": {"show": False}, "splitLine": {"show": False},
+            },
+            "yAxis": {
+                "type": "value", "name": "kg",
+                "nameTextStyle": {"color": "#888888", "fontSize": 11, "fontFamily": _EP_FONT},
+                "axisLabel": {"color": "#666666", "fontSize": 12, "fontFamily": _EP_FONT},
+                "axisLine": {"show": False}, "axisTick": {"show": False},
+                "splitLine": {"lineStyle": {"color": "#f0f0f0", "width": 1}},
+            },
+            "series": [
+                {
+                    "name": "1RM estimado", "type": "line",
+                    "data": [round(float(v), 1) for v in tendencia["rm_estimado"]],
+                    "symbol": "circle", "symbolSize": 8,
+                    "lineStyle": {"color": "#2d6a9f", "width": 2.5},
+                    "itemStyle": {"color": "#2d6a9f"},
+                },
+                {
+                    "name": "Carga utilizada", "type": "line",
+                    "data": [round(float(v), 1) for v in tendencia["carga_kg"]],
+                    "symbol": "circle", "symbolSize": 6,
+                    "lineStyle": {"color": "#1a9e5c", "width": 1.8, "type": "dashed"},
+                    "itemStyle": {"color": "#1a9e5c"},
+                },
+            ],
+        }
+        st_echarts(options=option_rm, height="350px")
 
         # Resumen numérico del ejercicio
         col_rm1, col_rm2, col_rm3, col_rm4 = st.columns(4)
@@ -370,31 +391,56 @@ with tab_analisis:
                 .assign(ejercicio="Total")
             )
 
-        fig_vol = px.bar(
-            vol_graf,
-            x="semana",
-            y="volumen_total_kg",
-            color="ejercicio" if filtro_vol != "Todos" else None,
-            text=vol_graf["volumen_total_kg"].apply(lambda x: f"{x:,.0f}"),
-            labels={
-                "semana":           "Semana",
-                "volumen_total_kg": "Volumen (kg)",
-                "ejercicio":        "Ejercicio",
+        def _fmt_semana(s):
+            if hasattr(s, "strftime"):
+                return s.strftime("%d/%m")
+            if hasattr(s, "start_time"):
+                return s.start_time.strftime("%d/%m")
+            return str(s)[:10]
+
+        _fechas_vol = [_fmt_semana(s) for s in vol_graf["semana"]]
+        option_vol = {
+            **_EP_ANIM,
+            "tooltip": {**_EP_TOOLTIP, "trigger": "axis"},
+            "title": {
+                "text": f"Volumen semanal — {'Todos los ejercicios' if filtro_vol == 'Todos' else filtro_vol}",
+                "textStyle": {"fontSize": 14, "color": "#3D3D3D", "fontWeight": "600", "fontFamily": _EP_FONT},
+                "top": 4, "left": 0,
             },
-            title=f"Volumen semanal — {'Todos los ejercicios' if filtro_vol == 'Todos' else filtro_vol}",
-            color_discrete_sequence=px.colors.qualitative.Safe,
-        )
-        fig_vol.update_layout(
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            height=340,
-            xaxis=dict(tickformat="%d/%m"),
-            xaxis_title="",
-            legend=dict(orientation="h", y=-0.25, title=""),
-            margin=dict(t=40, b=20, l=50, r=20),
-        )
-        fig_vol.update_traces(textposition="outside")
-        st.plotly_chart(fig_vol, use_container_width=True)
+            "grid": {"top": 50, "bottom": 70, "left": 70, "right": 24},
+            "xAxis": {
+                "type": "category", "data": _fechas_vol,
+                "axisLabel": {"fontSize": 12, "color": "#666666", "fontFamily": _EP_FONT, "rotate": 30},
+                "axisLine": {"show": False}, "axisTick": {"show": False}, "splitLine": {"show": False},
+            },
+            "yAxis": {
+                "type": "value", "name": "Volumen (kg)",
+                "nameTextStyle": {"color": "#888888", "fontSize": 11, "fontFamily": _EP_FONT},
+                "axisLabel": {"color": "#666666", "fontSize": 12, "fontFamily": _EP_FONT},
+                "axisLine": {"show": False}, "axisTick": {"show": False},
+                "splitLine": {"lineStyle": {"color": "#f0f0f0", "width": 1}},
+            },
+            "series": [{
+                "type": "bar", "barMaxWidth": 52,
+                "data": [
+                    {
+                        "value": round(float(v), 0),
+                        "itemStyle": {
+                            "color": _ep_gradient("#F47920", "rgba(244,121,32,0.40)"),
+                            "borderRadius": [4, 4, 0, 0],
+                            "shadowBlur": 4, "shadowColor": "rgba(0,0,0,0.08)",
+                        },
+                    }
+                    for v in vol_graf["volumen_total_kg"]
+                ],
+                "label": {
+                    "show": True, "position": "top",
+                    "formatter": JsCode("function(p){ return p.value.toLocaleString(); }"),
+                    "fontSize": 11, "color": "#3D3D3D", "fontFamily": _EP_FONT,
+                },
+            }],
+        }
+        st_echarts(options=option_vol, height="340px")
 
     st.divider()
 
@@ -436,51 +482,76 @@ with tab_analisis:
         if df_comp.empty:
             st.info("Sin datos de este ejercicio en el plantel.")
         else:
-            # Colorear según posición
-            colores_pos = {
-                "portero":       "#636EFA",
-                "defensor":      "#00CC96",
-                "mediocampista": "#EF553B",
-                "delantero":     "#FFA15A",
-            }
-
-            fig_comp = px.bar(
-                df_comp,
-                x="rm_estimado",
-                y="jugador",
-                color="posicion",
-                color_discrete_map=colores_pos,
-                orientation="h",
-                text=df_comp["rm_estimado"].apply(lambda x: f"{x:.1f} kg"),
-                labels={
-                    "rm_estimado": "1RM estimado (kg)",
-                    "jugador":     "",
-                    "posicion":    "Posición",
-                },
-                title=f"1RM estimado por jugador — {ejercicio_comp}",
-            )
-
-            # Línea vertical del promedio del equipo
             prom_equipo = df_comp["rm_estimado"].mean()
-            fig_comp.add_vline(
-                x=prom_equipo,
-                line_dash="dash",
-                line_color="#888",
-                annotation_text=f"Prom. equipo: {prom_equipo:.1f} kg",
-                annotation_position="top right",
-                annotation_font=dict(size=11, color="#555"),
-            )
 
-            fig_comp.update_layout(
-                plot_bgcolor="rgba(0,0,0,0)",
-                paper_bgcolor="rgba(0,0,0,0)",
-                height=max(400, len(df_comp) * 28),
-                xaxis_title="1RM estimado (kg)",
-                legend=dict(orientation="h", y=-0.15, title=""),
-                margin=dict(t=50, b=20, l=160, r=80),
-            )
-            fig_comp.update_traces(textposition="outside")
-            st.plotly_chart(fig_comp, use_container_width=True)
+            _GRAD_POS = {
+                "portero":       _ep_grad_h("rgba(45,106,159,0.40)",  "#2d6a9f"),
+                "defensor":      _ep_grad_h("rgba(26,158,92,0.40)",   "#1a9e5c"),
+                "mediocampista": _ep_grad_h("rgba(214,48,49,0.40)",   "#d63031"),
+                "delantero":     _ep_grad_h("rgba(244,121,32,0.40)",  "#F47920"),
+            }
+            _default_grad = _ep_grad_h("rgba(136,136,136,0.4)", "#888888")
+
+            _barras_comp = [
+                {
+                    "value": round(float(row["rm_estimado"]), 1),
+                    "itemStyle": {
+                        "color": _GRAD_POS.get(row["posicion"], _default_grad),
+                        "borderRadius": [0, 4, 4, 0],
+                        "shadowBlur": 4, "shadowColor": "rgba(0,0,0,0.08)",
+                    },
+                }
+                for _, row in df_comp.iterrows()
+            ]
+
+            option_comp = {
+                **_EP_ANIM,
+                "tooltip": {
+                    **_EP_TOOLTIP, "trigger": "axis",
+                    "axisPointer": {"type": "shadow"},
+                    "formatter": JsCode("""
+function(params) {
+    var p = params[0];
+    return '<b>' + p.name + '</b><br/>1RM: <b>' + p.value.toFixed(1) + ' kg</b>';
+}
+"""),
+                },
+                "grid": {"top": 40, "bottom": 40, "left": 160, "right": 90},
+                "xAxis": {
+                    "type": "value", "name": "1RM estimado (kg)",
+                    "nameTextStyle": {"color": "#888888", "fontSize": 11, "fontFamily": _EP_FONT},
+                    "axisLabel": {"color": "#666666", "fontSize": 12, "fontFamily": _EP_FONT},
+                    "axisLine": {"show": False}, "axisTick": {"show": False},
+                    "splitLine": {"lineStyle": {"color": "#f0f0f0", "width": 1}},
+                },
+                "yAxis": {
+                    "type": "category",
+                    "data": df_comp["jugador"].tolist(),
+                    "axisLabel": {"color": "#3D3D3D", "fontSize": 11, "fontFamily": _EP_FONT},
+                    "axisLine": {"show": False}, "axisTick": {"show": False},
+                    "splitLine": {"show": False},
+                },
+                "series": [{
+                    "type": "bar", "data": _barras_comp, "barMaxWidth": 28,
+                    "label": {
+                        "show": True, "position": "right",
+                        "formatter": JsCode("function(p){ return p.value.toFixed(1)+' kg'; }"),
+                        "fontSize": 11, "color": "#3D3D3D", "fontFamily": _EP_FONT,
+                    },
+                    "markLine": {
+                        "symbol": ["none", "none"], "silent": True,
+                        "data": [{
+                            "xAxis": round(float(prom_equipo), 1),
+                            "lineStyle": {"type": "dashed", "color": "#888888", "width": 1.5},
+                            "label": {
+                                "formatter": f"Prom: {prom_equipo:.1f} kg",
+                                "color": "#555555", "fontSize": 10, "position": "end",
+                            },
+                        }],
+                    },
+                }],
+            }
+            st_echarts(options=option_comp, height=f"{max(400, len(df_comp) * 30 + 80)}px")
 
 
 # ============================================================

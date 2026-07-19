@@ -17,8 +17,20 @@ import pandas as pd
 import numpy as np
 import sqlite3
 import os
-import plotly.graph_objects as go
+from streamlit_echarts import st_echarts, JsCode
 from sklearn.ensemble import RandomForestClassifier
+
+# ── Tema visual EQUIPOPHYSICAL ─────────────────────────────────
+_EP_FONT = "'Inter', 'Segoe UI', sans-serif"
+_EP_TOOLTIP = {
+    "backgroundColor": "#1e1e2e", "borderWidth": 0, "borderRadius": 8,
+    "extraCssText": "box-shadow:0 4px 12px rgba(0,0,0,.25);",
+    "textStyle": {"color": "#ffffff", "fontSize": 12, "fontFamily": "'Inter','Segoe UI',sans-serif"},
+}
+_EP_ANIM = {
+    "backgroundColor": "transparent", "animation": True,
+    "animationDuration": 800, "animationEasing": "cubicOut", "animationDurationUpdate": 0,
+}
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import roc_auc_score
 
@@ -354,96 +366,182 @@ def _badge_riesgo(prob):
 
 
 def _grafico_evolucion(fechas, probs, nombre):
-    """Gráfico de línea con la evolución del riesgo en los últimos 14 días."""
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=fechas,
-        y=[p * 100 for p in probs],
-        mode="lines+markers",
-        line=dict(color="#1f77b4", width=2),
-        marker=dict(size=9, color=[_color_riesgo(p)[0] for p in probs]),
-        name="Riesgo (%)",
-    ))
-    fig.add_hrect(y0=0,  y1=10,  fillcolor="#1a7a3a", opacity=0.06, line_width=0)
-    fig.add_hrect(y0=10, y1=25,  fillcolor="#f7c948", opacity=0.08, line_width=0)
-    fig.add_hrect(y0=25, y1=100, fillcolor="#c0392b", opacity=0.06, line_width=0)
-    fig.add_hline(y=25, line_dash="dash", line_color="#8b0000",
-                  annotation_text="Umbral ALTO (25%)")
-    fig.add_hline(y=10, line_dash="dash", line_color="#b35900",
-                  annotation_text="Umbral MODERADO (10%)")
-    fig.update_layout(
-        title=f"Evolución del riesgo — {nombre}",
-        xaxis_title="Fecha",
-        yaxis_title="Riesgo (%)",
-        yaxis=dict(range=[0, 100]),
-        height=310,
-        margin=dict(l=20, r=20, t=45, b=20),
-    )
-    return fig
+    """Gráfico ECharts con la evolución del riesgo en los últimos 14 días."""
+    _fechas_str = [f.strftime("%d/%m") if hasattr(f, "strftime") else str(f) for f in fechas]
+    _valores    = [round(p * 100, 1) for p in probs]
+    _colores_pt = [_color_riesgo(p)[0] for p in probs]
+
+    return {
+        **_EP_ANIM,
+        "title": {
+            "text": f"Evolución del riesgo — {nombre}",
+            "textStyle": {"fontSize": 14, "color": "#3D3D3D", "fontWeight": "600", "fontFamily": _EP_FONT},
+            "top": 4,
+        },
+        "tooltip": {**_EP_TOOLTIP, "trigger": "axis"},
+        "grid": {"top": 50, "bottom": 50, "left": 55, "right": 24},
+        "xAxis": {
+            "type": "category", "data": _fechas_str,
+            "axisLabel": {"fontSize": 12, "color": "#666666", "fontFamily": _EP_FONT},
+            "axisLine": {"show": False}, "axisTick": {"show": False}, "splitLine": {"show": False},
+        },
+        "yAxis": {
+            "type": "value", "name": "Riesgo (%)", "min": 0, "max": 100,
+            "nameTextStyle": {"color": "#888888", "fontSize": 11, "fontFamily": _EP_FONT},
+            "axisLabel": {"color": "#666666", "fontSize": 12, "fontFamily": _EP_FONT},
+            "axisLine": {"show": False}, "axisTick": {"show": False},
+            "splitLine": {"lineStyle": {"color": "#f0f0f0", "width": 1}},
+        },
+        "visualMap": {"show": False, "dimension": 0, "pieces": []},
+        "series": [{
+            "name": "Riesgo (%)", "type": "line",
+            "data": [
+                {"value": v, "itemStyle": {"color": c}}
+                for v, c in zip(_valores, _colores_pt)
+            ],
+            "symbol": "circle", "symbolSize": 9,
+            "lineStyle": {"color": "#2d6a9f", "width": 2},
+            "markArea": {
+                "silent": True,
+                "data": [
+                    [{"yAxis": 0,  "itemStyle": {"color": "rgba(26,122,58,0.06)"}},  {"yAxis": 10}],
+                    [{"yAxis": 10, "itemStyle": {"color": "rgba(247,201,72,0.08)"}}, {"yAxis": 25}],
+                    [{"yAxis": 25, "itemStyle": {"color": "rgba(192,57,43,0.06)"}},  {"yAxis": 100}],
+                ],
+            },
+            "markLine": {
+                "symbol": ["none", "none"], "silent": True,
+                "data": [
+                    {"yAxis": 25, "lineStyle": {"type": "dashed", "color": "#8b0000", "width": 1.5},
+                     "label": {"formatter": "ALTO (25%)", "color": "#8b0000", "fontSize": 10}},
+                    {"yAxis": 10, "lineStyle": {"type": "dashed", "color": "#b35900", "width": 1.5},
+                     "label": {"formatter": "MODERADO (10%)", "color": "#b35900", "fontSize": 10}},
+                ],
+            },
+        }],
+    }
 
 
 def _grafico_importancias(modelo):
-    """Barras horizontales con la importancia global de cada feature."""
+    """ECharts barras horizontales con la importancia global de cada feature."""
     imp = pd.DataFrame({
         "feature": [NOMBRE_FEATURE[f] for f in FEATURES],
         "valor":   modelo.feature_importances_,
     }).sort_values("valor")
 
-    fig = go.Figure(go.Bar(
-        x=imp["valor"], y=imp["feature"],
-        orientation="h",
-        marker_color="#1f77b4",
-    ))
-    fig.update_layout(
-        title="Importancia de features (modelo global)",
-        xaxis_title="Importancia relativa",
-        height=290,
-        margin=dict(l=20, r=20, t=45, b=20),
-    )
-    return fig
+    return {
+        **_EP_ANIM,
+        "title": {
+            "text": "Importancia de features (modelo global)",
+            "textStyle": {"fontSize": 14, "color": "#3D3D3D", "fontWeight": "600", "fontFamily": _EP_FONT},
+            "top": 4,
+        },
+        "tooltip": {**_EP_TOOLTIP, "trigger": "axis", "axisPointer": {"type": "shadow"}},
+        "grid": {"top": 45, "bottom": 20, "left": 24, "right": 24, "containLabel": True},
+        "xAxis": {
+            "type": "value", "name": "Importancia relativa",
+            "nameTextStyle": {"color": "#888888", "fontSize": 10, "fontFamily": _EP_FONT},
+            "axisLabel": {"color": "#666666", "fontSize": 11, "fontFamily": _EP_FONT},
+            "axisLine": {"show": False}, "axisTick": {"show": False},
+            "splitLine": {"lineStyle": {"color": "#f0f0f0", "width": 1}},
+        },
+        "yAxis": {
+            "type": "category", "data": imp["feature"].tolist(),
+            "axisLabel": {"color": "#3D3D3D", "fontSize": 11, "fontFamily": _EP_FONT},
+            "axisLine": {"show": False}, "axisTick": {"show": False},
+        },
+        "series": [{
+            "type": "bar",
+            "data": [
+                {
+                    "value": round(float(v), 4),
+                    "itemStyle": {
+                        "color": {"type": "linear", "x": 0, "y": 0, "x2": 1, "y2": 0,
+                                  "colorStops": [{"offset": 0, "color": "rgba(45,106,159,0.40)"},
+                                                 {"offset": 1, "color": "#2d6a9f"}]},
+                        "borderRadius": [0, 4, 4, 0],
+                        "shadowBlur": 4, "shadowColor": "rgba(0,0,0,0.08)",
+                    },
+                }
+                for v in imp["valor"]
+            ],
+            "barMaxWidth": 22,
+            "label": {
+                "show": True, "position": "right",
+                "formatter": JsCode("function(p){ return (p.value*100).toFixed(1)+'%'; }"),
+                "fontSize": 10, "color": "#3D3D3D", "fontFamily": _EP_FONT,
+            },
+        }],
+    }
 
 
 def _grafico_heatmap(riesgo_df, jugadores_df):
-    """Heatmap jugadores × días → nivel de riesgo (%)."""
+    """ECharts heatmap jugadores × días → nivel de riesgo (%)."""
     df = riesgo_df.merge(jugadores_df[["id", "nombre"]], left_on="jugador_id", right_on="id")
     df["dia"] = df["fecha"].dt.strftime("%d/%m")
 
     pivot = df.pivot_table(index="nombre", columns="dia", values="riesgo_pct", aggfunc="mean")
-
-    # Ordenar columnas cronológicamente y filas por riesgo del último día
     col_order = sorted(pivot.columns, key=lambda s: pd.to_datetime(s, format="%d/%m", errors="coerce"))
     pivot = pivot[col_order]
-
     ultimo_dia = pivot.columns[-1]
     pivot = pivot.sort_values(ultimo_dia, ascending=False)
 
-    fig = go.Figure(go.Heatmap(
-        z=pivot.values,
-        x=pivot.columns.tolist(),
-        y=pivot.index.tolist(),
-        colorscale=[
-            [0.00, "#1a7a3a"],
-            [0.10, "#52b788"],
-            [0.25, "#f7c948"],
-            [0.50, "#e85d04"],
-            [1.00, "#6e0000"],
-        ],
-        zmin=0, zmax=100,
-        colorbar=dict(title="Riesgo (%)"),
-        text=[
-            [f"{v:.0f}%" if not np.isnan(v) else "" for v in row]
-            for row in pivot.values
-        ],
-        texttemplate="%{text}",
-        textfont={"size": 9},
-    ))
-    fig.update_layout(
-        title="Heatmap de riesgo del plantel",
-        xaxis=dict(side="top"),
-        height=max(320, len(pivot) * 28 + 100),
-        margin=dict(l=20, r=20, t=60, b=20),
-    )
-    return fig
+    _jugadores = pivot.index.tolist()
+    _dias      = pivot.columns.tolist()
+
+    # Formato [col_idx, row_idx, value] para ECharts heatmap
+    _data_hm = [
+        [j, i, round(float(pivot.iloc[i, j]), 1) if not np.isnan(pivot.iloc[i, j]) else 0]
+        for i in range(len(_jugadores))
+        for j in range(len(_dias))
+    ]
+
+    _chart_h = max(320, len(_jugadores) * 28 + 100)
+
+    return {
+        **_EP_ANIM,
+        "title": {
+            "text": "Heatmap de riesgo del plantel",
+            "textStyle": {"fontSize": 14, "color": "#3D3D3D", "fontWeight": "600", "fontFamily": _EP_FONT},
+            "top": 4,
+        },
+        "tooltip": {
+            **_EP_TOOLTIP, "trigger": "item",
+            "formatter": JsCode(
+                "function(p){ return '<b>'+p.name+'</b><br/>'+p.data[1]+'<br/>Riesgo: <b>'+p.data[2].toFixed(1)+'%</b>'; }"
+            ),
+        },
+        "grid": {"top": 60, "bottom": 40, "left": 160, "right": 80},
+        "xAxis": {
+            "type": "category", "data": _dias, "position": "top",
+            "axisLabel": {"fontSize": 11, "color": "#666666", "fontFamily": _EP_FONT},
+            "axisLine": {"show": False}, "axisTick": {"show": False},
+            "splitLine": {"show": False},
+        },
+        "yAxis": {
+            "type": "category", "data": _jugadores,
+            "axisLabel": {"fontSize": 11, "color": "#3D3D3D", "fontFamily": _EP_FONT},
+            "axisLine": {"show": False}, "axisTick": {"show": False},
+        },
+        "visualMap": {
+            "min": 0, "max": 100,
+            "calculable": True,
+            "orient": "horizontal", "right": 0, "top": "top",
+            "inRange": {"color": ["#1a7a3a", "#52b788", "#f7c948", "#e85d04", "#6e0000"]},
+            "text": ["Alto", "Bajo"],
+            "textStyle": {"fontSize": 10, "color": "#888888"},
+        },
+        "series": [{
+            "type": "heatmap",
+            "data": _data_hm,
+            "label": {
+                "show": True,
+                "formatter": JsCode("function(p){ return p.data[2].toFixed(0)+'%'; }"),
+                "fontSize": 9, "color": "#ffffff",
+            },
+        }],
+        "_chart_h": _chart_h,
+    }
 
 
 # ── PÁGINA PRINCIPAL ──────────────────────────────────────────
@@ -542,13 +640,13 @@ def main():
             .sort_values("fecha")
         )
         if not historial_jug.empty:
-            st.plotly_chart(
-                _grafico_evolucion(
+            st_echarts(
+                options=_grafico_evolucion(
                     historial_jug["fecha"].tolist(),
                     (historial_jug["riesgo_pct"] / 100).tolist(),
                     nombre_sel,
                 ),
-                use_container_width=True,
+                height="310px",
             )
 
     # ────────────────────────────────────────────────────────
@@ -583,7 +681,9 @@ def main():
         ventana_7d["riesgo_pct"] = (
             modelo.predict_proba(ventana_7d[FEATURES].values)[:, 1] * 100
         )
-        st.plotly_chart(_grafico_heatmap(ventana_7d, jugadores_df), use_container_width=True)
+        _opt_hm = _grafico_heatmap(ventana_7d, jugadores_df)
+        _h_hm   = _opt_hm.pop("_chart_h", 400)
+        st_echarts(options=_opt_hm, height=f"{_h_hm}px")
 
     # ────────────────────────────────────────────────────────
     # TAB 3 — MODELO Y VALIDACIÓN
@@ -640,7 +740,7 @@ def main():
 
         st.divider()
         st.markdown("#### Importancia de features")
-        st.plotly_chart(_grafico_importancias(modelo), use_container_width=True)
+        st_echarts(options=_grafico_importancias(modelo), height="290px")
 
         st.divider()
         st.warning(
