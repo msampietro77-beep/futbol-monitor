@@ -58,6 +58,7 @@ from metricas import (
     snapshot_fuerza_plantel,
     calcular_volumen_sesion,
 )
+import auth
 
 
 # ============================================================
@@ -70,6 +71,8 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+auth.exigir_acceso("Carga_Gym")
 
 st.markdown("""
 <style>

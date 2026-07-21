@@ -17,6 +17,12 @@ import streamlit as st
 import pandas as pd
 from streamlit_echarts import st_echarts, JsCode
 import sqlite3
+import sys
+import os
+
+# Permite importar auth.py, que está un directorio arriba (raíz del proyecto)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import auth
 
 # ── Tema visual EQUIPOPHYSICAL ─────────────────────────────────
 _EP_FONT = "'Inter', 'Segoe UI', sans-serif"
@@ -34,7 +40,6 @@ _EP_ANIM = {
     "backgroundColor": "transparent", "animation": True,
     "animationDuration": 800, "animationEasing": "cubicOut", "animationDurationUpdate": 0,
 }
-import os
 
 # ============================================================
 # CONFIGURACIÓN DE PÁGINA
@@ -46,6 +51,8 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+auth.exigir_acceso("Epidemiologia")
 
 st.markdown("""
 <style>
@@ -145,6 +152,29 @@ def cargar_exposicion():
     """, conn)
     conn.close()
     return df
+
+
+@st.cache_data(ttl=300)
+def cargar_decisiones_rtp():
+    """
+    Última decisión RTP registrada por lesión (APTO / APTO_CONDICIONADO /
+    NO_APTO). Si una lesión todavía no tiene evaluaciones cargadas por el
+    fisio, simplemente no aparece acá (se completa como "Sin evaluar").
+    """
+    conn = _conectar()
+    try:
+        df = pd.read_sql("""
+            SELECT lesion_id, decision, fecha
+            FROM rtp_evaluaciones
+            ORDER BY fecha
+        """, conn)
+    except Exception:
+        df = pd.DataFrame(columns=["lesion_id", "decision", "fecha"])
+    conn.close()
+
+    if df.empty:
+        return df
+    return df.sort_values("fecha").groupby("lesion_id").last().reset_index()
 
 
 # ============================================================
@@ -601,3 +631,127 @@ st.caption(
     f"Total: {m['n_total']} lesiones · {m['n_relesiones']} re-lesiones · "
     f"{m['dias_baja_total']} días de baja totales"
 )
+
+st.divider()
+
+
+# ============================================================
+# SECCIÓN 5: RECORRIDO DE LESIONES (SANKEY)
+# Flujo: Lesión → Tipo → Zona corporal → Decisión RTP → Disponibilidad
+# ============================================================
+
+st.subheader("🔀 Recorrido de las Lesiones")
+st.caption(
+    "Cada lesión fluye de izquierda a derecha: tipo de lesión → zona corporal → "
+    "última decisión RTP registrada → estado de disponibilidad actual."
+)
+
+decisiones_rtp = cargar_decisiones_rtp()
+
+flujo = lesiones_df[["id", "tipo_lesion", "zona_corporal", "activo"]].copy()
+
+if not decisiones_rtp.empty:
+    flujo = flujo.merge(
+        decisiones_rtp[["lesion_id", "decision"]],
+        left_on="id", right_on="lesion_id", how="left",
+    )
+else:
+    flujo["decision"] = None
+
+ETIQUETAS_DECISION = {
+    "APTO":              "RTP: Apto",
+    "APTO_CONDICIONADO": "RTP: Apto condic.",
+    "NO_APTO":           "RTP: No apto",
+}
+flujo["rtp_label"] = flujo["decision"].map(ETIQUETAS_DECISION).fillna("RTP: Sin evaluar")
+flujo["tipo_label"] = "Tipo: " + flujo["tipo_lesion"].astype(str)
+flujo["zona_label"] = "Zona: " + flujo["zona_corporal"].astype(str)
+flujo["disponible_label"] = flujo["activo"].map({0: "✅ Disponible", 1: "🤕 No disponible"})
+flujo["raiz"] = "🩹 Lesiones"
+
+
+def _contar_enlaces(df, columna_origen, columna_destino):
+    """Cuenta cuántas lesiones fluyen de un nodo a otro (un enlace del Sankey)."""
+    return (
+        df.groupby([columna_origen, columna_destino])
+        .size()
+        .reset_index(name="value")
+        .rename(columns={columna_origen: "source", columna_destino: "target"})
+    )
+
+
+enlaces_sankey = pd.concat([
+    _contar_enlaces(flujo, "raiz",       "tipo_label"),
+    _contar_enlaces(flujo, "tipo_label", "zona_label"),
+    _contar_enlaces(flujo, "zona_label", "rtp_label"),
+    _contar_enlaces(flujo, "rtp_label",  "disponible_label"),
+], ignore_index=True)
+
+
+def _color_nodo_sankey(nombre):
+    if nombre == "🩹 Lesiones":
+        return "#3D3D3D"
+    if nombre.startswith("Tipo: "):
+        return "#F47920"
+    if nombre.startswith("Zona: "):
+        return "#2d6a9f"
+    if nombre == "RTP: Apto":
+        return "#1a9e5c"
+    if nombre == "RTP: Apto condic.":
+        return "#e8a020"
+    if nombre == "RTP: No apto":
+        return "#d63031"
+    if nombre == "RTP: Sin evaluar":
+        return "#999999"
+    if nombre == "✅ Disponible":
+        return "#1a9e5c"
+    if nombre == "🤕 No disponible":
+        return "#d63031"
+    return "#cccccc"
+
+
+_nodos_unicos = pd.unique(enlaces_sankey[["source", "target"]].values.ravel())
+_nodos_sankey = [
+    {"name": n, "itemStyle": {"color": _color_nodo_sankey(n)}}
+    for n in _nodos_unicos
+]
+_links_sankey = [
+    {"source": row["source"], "target": row["target"], "value": int(row["value"])}
+    for _, row in enlaces_sankey.iterrows()
+]
+
+option_sankey = {
+    **_EP_ANIM,
+    "tooltip": {
+        **_EP_TOOLTIP,
+        "trigger": "item",
+        "formatter": JsCode("""
+function (p) {
+    if (p.dataType === 'edge') {
+        return p.data.source + ' → ' + p.data.target + '<br/><b>' + p.data.value + '</b> lesión(es)';
+    }
+    return '<b>' + p.name + '</b>';
+}
+"""),
+    },
+    "series": [{
+        "type": "sankey",
+        "layout": "none",
+        "emphasis": {"focus": "adjacency"},
+        "data": _nodos_sankey,
+        "links": _links_sankey,
+        "lineStyle": {"color": "gradient", "curveness": 0.5, "opacity": 0.35},
+        "label": {"fontSize": 11, "fontFamily": _EP_FONT, "color": "#3D3D3D"},
+        "nodeWidth": 16,
+        "nodeGap": 12,
+    }],
+}
+
+st_echarts(options=option_sankey, height="500px")
+
+if decisiones_rtp.empty:
+    st.info(
+        "ℹ️ Todavía no hay evaluaciones cargadas en el módulo RTP — por eso "
+        "todas las lesiones aparecen como **'RTP: Sin evaluar'**. Ese tramo se "
+        "va completando a medida que los fisios cargan evaluaciones en RTP."
+    )

@@ -2,7 +2,7 @@
 pages/RTP.py
 ============
 Módulo de Return to Play (RTP) — Pecci et al. (2026).
-Acceso exclusivo para fisioterapeutas (contraseña requerida).
+Acceso según rol: director, médico y kinesiólogo (ver auth.py).
 
 Criterios clínicos por tipo de lesión:
   - Isquiotibiales: 8 criterios ponderados (pesos suman 100)
@@ -18,6 +18,7 @@ Decisión automática por score ponderado:
 import streamlit as st
 import pandas as pd
 import sqlite3
+import sys
 import os
 import json
 from datetime import date
@@ -29,6 +30,12 @@ st.set_page_config(
     page_icon="🏥",
     layout="wide",
 )
+
+# Permite importar auth.py, que está un directorio arriba (raíz del proyecto)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import auth
+
+auth.exigir_acceso("RTP")
 
 DB_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -379,30 +386,6 @@ def decision_texto(score_pct, bloqueantes_ok):
     return "NO_APTO"
 
 
-# ── GATE DE CONTRASEÑA ───────────────────────────────────────
-
-def _gate_password():
-    """Muestra pantalla de login. Retorna True si autenticado."""
-    if st.session_state.get("rtp_auth"):
-        return True
-
-    st.markdown("## 🏥 Módulo RTP — Acceso Restringido")
-    st.markdown("Este módulo es exclusivo para **fisioterapeutas**.")
-
-    clave = st.text_input("Contraseña", type="password", key="rtp_pw_input")
-    if st.button("Ingresar", type="primary"):
-        try:
-            correcta = st.secrets["rtp_password"]
-        except Exception:
-            correcta = "fisio2024"
-        if clave == correcta:
-            st.session_state["rtp_auth"] = True
-            st.rerun()
-        else:
-            st.error("Contraseña incorrecta.")
-    return False
-
-
 # ── HELPERS DE DISPLAY ────────────────────────────────────────
 
 def _badge_decision(decision):
@@ -495,9 +478,6 @@ def _formulario_criterios(criterios_lista):
 # ── PÁGINA PRINCIPAL ──────────────────────────────────────────
 
 def main():
-    if not _gate_password():
-        return
-
     st.title("🏥 Return to Play — Pecci et al. (2026)")
 
     lesionados = cargar_lesionados_activos()
@@ -536,11 +516,6 @@ def main():
 
         fecha_eval = st.date_input("Fecha de evaluación", value=date.today())
         evaluador  = st.text_input("Evaluador", placeholder="Nombre del fisio")
-
-        st.divider()
-        if st.button("🚪 Cerrar sesión", use_container_width=True):
-            st.session_state["rtp_auth"] = False
-            st.rerun()
 
     # ── Tabs ─────────────────────────────────────────────────
     tab_eval, tab_hist = st.tabs(["📋 Evaluación RTP", "📊 Historial"])

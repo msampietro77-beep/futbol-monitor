@@ -29,6 +29,7 @@ from metricas import (
     cargar_lesiones_todas,
     cargar_wellness,
 )
+import auth
 
 
 # ============================================================
@@ -41,6 +42,8 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+auth.exigir_acceso("Front_Desk")
 
 st.markdown("""
 <style>

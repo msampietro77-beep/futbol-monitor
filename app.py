@@ -18,6 +18,8 @@ import pandas as pd
 from streamlit_echarts import st_echarts, JsCode
 from datetime import date, timedelta
 
+import auth
+
 
 # ============================================================
 # CONFIGURACIÓN DE PÁGINA
@@ -39,6 +41,15 @@ st.markdown("""
     .stMetric label {font-size: 0.85rem;}
 </style>
 """, unsafe_allow_html=True)
+
+
+# ============================================================
+# LOGIN — si no hay sesión activa, se muestra el formulario y
+# se corta la ejecución acá (auth.mostrar_login() llama st.stop())
+# ============================================================
+
+if not auth.esta_logueado():
+    auth.mostrar_login()
 
 
 # ============================================================
@@ -159,6 +170,33 @@ with st.sidebar:
     st.divider()
     st.caption("Sistema de Monitoreo de Rendimiento\nEQUIPOPHYSICAL")
 
+# Panel de usuario (rol activo + botón de cerrar sesión)
+auth.mostrar_panel_usuario_sidebar()
+
+
+# ============================================================
+# ACCESO AL DASHBOARD SEGÚN ROL
+# Roles como médico o kinesiólogo no tienen el Dashboard entre
+# sus módulos permitidos: en vez del panel completo, ven una
+# pantalla de bienvenida que los guía a sus módulos del menú.
+# ============================================================
+
+if not auth.tiene_acceso("Dashboard"):
+    st.title("⚽ Monitor de Rendimiento del Plantel")
+    st.success(
+        f"Sesión iniciada como "
+        f"**{auth.ROLES_LEGIBLES.get(auth.rol_actual(), auth.rol_actual())}**"
+    )
+    _paginas_rol = [
+        auth.PAGINAS_LEGIBLES.get(p, p)
+        for p in auth.PAGINAS_POR_ROL.get(auth.rol_actual(), [])
+    ]
+    if _paginas_rol:
+        st.info("📂 Usá el menú lateral para acceder a tus módulos: " + ", ".join(_paginas_rol))
+    else:
+        st.warning("Tu rol todavía no tiene módulos asignados en el sistema. Este módulo está en desarrollo.")
+    st.stop()
+
 
 # ============================================================
 # CARGA INICIAL
@@ -169,6 +207,41 @@ r           = reporte["resumen"]
 acwr_df     = obtener_acwr_snapshot()
 disponibles = reporte["disponibles"].copy()
 lesionados  = reporte["lesionados"].copy()
+
+
+# --- Tema visual compartido (Inter + paleta EQUIPOPHYSICAL) ---
+# Se define acá arriba (antes de la Sección 1) porque el gauge de
+# disponibilidad ya lo necesita.
+_EP_FONT    = "'Inter', 'Segoe UI', sans-serif"
+_EP_TOOLTIP = {
+    "backgroundColor": "#1e1e2e",
+    "borderWidth": 0,
+    "borderRadius": 8,
+    "extraCssText": "box-shadow:0 4px 12px rgba(0,0,0,.25);",
+    "textStyle": {"color": "#ffffff", "fontSize": 12, "fontFamily": "'Inter','Segoe UI',sans-serif"},
+}
+_EP_LEGEND = {
+    "bottom": 0,
+    "left": "center",
+    "orient": "horizontal",
+    "icon": "circle",
+    "itemWidth": 8,
+    "itemHeight": 8,
+    "itemGap": 24,
+    "textStyle": {"fontSize": 11, "color": "#888888", "fontFamily": "'Inter','Segoe UI',sans-serif"},
+}
+_EP_ANIM = {
+    "backgroundColor": "transparent",
+    "animation": True,
+    "animationDuration": 800,
+    "animationEasing": "cubicOut",
+    "animationDurationUpdate": 0,
+}
+
+def _ep_gradient(top_color, bot_color):
+    return {"type": "linear", "x": 0, "y": 0, "x2": 0, "y2": 1,
+            "colorStops": [{"offset": 0, "color": top_color},
+                           {"offset": 1, "color": bot_color}]}
 
 
 # ============================================================
@@ -187,22 +260,81 @@ with col_fecha:
 
 
 # ============================================================
-# SECCIÓN 1: MÉTRICAS DEL PLANTEL
+# SECCIÓN 1: MÉTRICAS DEL PLANTEL — GAUGE DE DISPONIBILIDAD
 # ============================================================
 
 disponibilidad_pct = round(r["disponibles"] / r["total_plantel"] * 100, 1)
 
-c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
-c1.metric("👥 Plantel total",  r["total_plantel"])
-c2.metric("✅ Disponibles",    r["disponibles"])
-c3.metric("🚑 Lesionados",     r["lesionados"],
-          delta=f"-{r['lesionados']}", delta_color="inverse")
-c4.metric("📊 Disponibilidad", f"{disponibilidad_pct}%")
-c5.metric("🔴 Roja",           r["alertas_rojas"],
-          delta=None if r["alertas_rojas"] == 0 else f"{r['alertas_rojas']} activas",
-          delta_color="inverse")
-c6.metric("🟠 Naranja",        r["alertas_naranja"])
-c7.metric("🟡 Amarilla",       r["alertas_amarillas"])
+col_gauge, col_metricas = st.columns([1, 2.4])
+
+with col_gauge:
+    # Gauge de disponibilidad del plantel: aguja + zonas de color
+    # rojo 0-75 % · naranja 75-90 % · verde 90-100 %
+    option_gauge = {
+        **_EP_ANIM,
+        "series": [{
+            "type": "gauge",
+            "min": 0,
+            "max": 100,
+            "radius": "92%",
+            "center": ["50%", "58%"],
+            "splitNumber": 5,
+            "progress": {"show": False},
+            "axisLine": {
+                "lineStyle": {
+                    "width": 16,
+                    "color": [
+                        [0.75, "#d63031"],   # rojo   0-75 %
+                        [0.90, "#F47920"],   # naranja 75-90 %
+                        [1.00, "#1a9e5c"],   # verde  90-100 %
+                    ],
+                },
+            },
+            "pointer": {
+                "itemStyle": {"color": "#3D3D3D"},
+                "width": 5,
+                "length": "60%",
+            },
+            "anchor": {"show": True, "size": 14, "itemStyle": {"color": "#3D3D3D"}},
+            "axisTick": {"distance": -16, "length": 5, "lineStyle": {"color": "#fff", "width": 1}},
+            "splitLine": {"distance": -16, "length": 16, "lineStyle": {"color": "#fff", "width": 2}},
+            "axisLabel": {
+                "distance": 22, "fontSize": 10, "color": "#999999", "fontFamily": _EP_FONT,
+                "formatter": "{value}",
+            },
+            "title": {"show": False},
+            "detail": {
+                "valueAnimation": True,
+                "formatter": "{value}%",
+                "fontSize": 30,
+                "fontWeight": "bold",
+                "color": "#3D3D3D",
+                "fontFamily": _EP_FONT,
+                "offsetCenter": [0, "72%"],
+            },
+            "data": [{"value": disponibilidad_pct, "name": "Disponibilidad"}],
+        }],
+    }
+    st_echarts(options=option_gauge, height="230px")
+    st.markdown(
+        "<p style='text-align:center; color:#888; font-size:0.85rem; margin-top:-14px'>"
+        "📊 Disponibilidad del plantel</p>",
+        unsafe_allow_html=True,
+    )
+
+with col_metricas:
+    c1, c2, c3 = st.columns(3)
+    c1.metric("👥 Plantel total",  r["total_plantel"])
+    c2.metric("✅ Disponibles",    r["disponibles"])
+    c3.metric("🚑 Lesionados",     r["lesionados"],
+              delta=f"-{r['lesionados']}", delta_color="inverse")
+
+    c5, c6, c7 = st.columns(3)
+    c5.metric("🔴 Alerta roja",     r["alertas_rojas"],
+              delta=None if r["alertas_rojas"] == 0 else f"{r['alertas_rojas']} activas",
+              delta_color="inverse")
+    c6.metric("🟠 Alerta naranja",  r["alertas_naranja"])
+    c7.metric("🟡 Alerta amarilla", r["alertas_amarillas"])
 
 st.divider()
 
@@ -272,38 +404,6 @@ st.dataframe(styled_semaforo, width='stretch', height=500)
 
 st.divider()
 
-
-# --- Tema visual compartido (Inter + paleta EQUIPOPHYSICAL) ---
-_EP_FONT    = "'Inter', 'Segoe UI', sans-serif"
-_EP_TOOLTIP = {
-    "backgroundColor": "#1e1e2e",
-    "borderWidth": 0,
-    "borderRadius": 8,
-    "extraCssText": "box-shadow:0 4px 12px rgba(0,0,0,.25);",
-    "textStyle": {"color": "#ffffff", "fontSize": 12, "fontFamily": "'Inter','Segoe UI',sans-serif"},
-}
-_EP_LEGEND = {
-    "bottom": 0,
-    "left": "center",
-    "orient": "horizontal",
-    "icon": "circle",
-    "itemWidth": 8,
-    "itemHeight": 8,
-    "itemGap": 24,
-    "textStyle": {"fontSize": 11, "color": "#888888", "fontFamily": "'Inter','Segoe UI',sans-serif"},
-}
-_EP_ANIM = {
-    "backgroundColor": "transparent",
-    "animation": True,
-    "animationDuration": 800,
-    "animationEasing": "cubicOut",
-    "animationDurationUpdate": 0,
-}
-
-def _ep_gradient(top_color, bot_color):
-    return {"type": "linear", "x": 0, "y": 0, "x2": 0, "y2": 1,
-            "colorStops": [{"offset": 0, "color": top_color},
-                           {"offset": 1, "color": bot_color}]}
 
 # ============================================================
 # SECCIÓN 3: EVOLUCIÓN ACWR — ÚLTIMOS 30 DÍAS
@@ -601,16 +701,23 @@ st.divider()
 
 
 # ============================================================
-# SECCIÓN 5: WELLNESS DEL EQUIPO — ÚLTIMOS 14 DÍAS
+# SECCIÓN 5: WELLNESS DEL EQUIPO — CALENDARIO ANUAL
 # ============================================================
 
-st.subheader("💚 Wellness Promedio del Equipo — Últimos 14 días")
+st.subheader("💚 Wellness del Equipo — Calendario Anual")
 
 wellness_hist = obtener_wellness_historico()
 fecha_max_w   = wellness_hist["fecha"].max()
 wellness_14d  = wellness_hist[wellness_hist["fecha"] >= fecha_max_w - timedelta(days=13)].copy()
 
-# Promedio diario del equipo
+# Promedio diario del equipo — todo el historial (para el calendario)
+# y últimos 14 días (para el panel de detalle de la derecha)
+wellness_diario_hist = (
+    wellness_hist.groupby("fecha")["wellness_total"]
+    .mean()
+    .reset_index()
+    .rename(columns={"wellness_total": "promedio"})
+)
 wellness_diario = (
     wellness_14d.groupby("fecha")["wellness_total"]
     .mean()
@@ -632,95 +739,98 @@ wellness_diario["estado"] = wellness_diario["promedio"].apply(_nivel_wellness)
 col_bien, col_det = st.columns([2, 1])
 
 with col_bien:
-    _GRAD_W = {
-        "Bueno  (≥3.5)":      _ep_gradient("#1a9e5c", "rgba(26,158,92,0.40)"),
-        "Regular  (2.8–3.5)": _ep_gradient("#F47920", "rgba(244,121,32,0.40)"),
-        "Bajo  (<2.8)":       _ep_gradient("#d63031", "rgba(214,48,49,0.40)"),
-    }
-    _fechas_w = [r["fecha"].strftime("%d/%m") for _, r in wellness_diario.iterrows()]
-    _barras_w = [
-        {
-            "value": round(float(r["promedio"]), 2),
-            "itemStyle": {
-                "color": _GRAD_W.get(r["estado"], _ep_gradient("#999999", "rgba(153,153,153,0.4)")),
-                "borderRadius": [4, 4, 0, 0],
-                "shadowBlur": 4,
-                "shadowColor": "rgba(0,0,0,0.08)",
-            },
-        }
-        for _, r in wellness_diario.iterrows()
+    # Vista tipo "GitHub contributions": un cuadradito por día del año,
+    # coloreado según el wellness promedio del equipo ese día.
+    anio_calendario = int(fecha_max_w.year)
+    _calendar_data = [
+        [r["fecha"].strftime("%Y-%m-%d"), round(float(r["promedio"]), 2)]
+        for _, r in wellness_diario_hist.iterrows()
     ]
 
-    option_wellness = {
+    option_heatmap = {
         **_EP_ANIM,
-        "animationEasing": "elasticOut",
         "tooltip": {
             **_EP_TOOLTIP,
-            "trigger": "axis",
             "formatter": JsCode("""
-function(params) {
-    var p = params[0];
-    var estado = p.value >= 3.5 ? '✅ Bueno'
-               : p.value >= 2.8 ? '⚠️ Regular'
+function (p) {
+    var estado = p.value[1] >= 3.5 ? '✅ Bueno'
+               : p.value[1] >= 2.8 ? '⚠️ Regular'
                : '🔴 Bajo';
-    return '<b>' + p.name + '</b><br/>' +
-           'Wellness: <b>' + p.value.toFixed(2) + '</b><br/>' + estado;
+    return '<b>' + p.value[0] + '</b><br/>Wellness: <b>' +
+           p.value[1].toFixed(2) + '</b><br/>' + estado;
 }
 """),
         },
-        "grid": {"top": 40, "bottom": 60, "left": 60, "right": 24},
-        "xAxis": {
-            "type": "category",
-            "data": _fechas_w,
-            "axisLabel": {"fontSize": 12, "color": "#666666", "rotate": 30, "fontFamily": _EP_FONT},
-            "axisLine": {"show": False},
-            "axisTick": {"show": False},
-            "splitLine": {"show": False},
+        "visualMap": {
+            "min": 1,
+            "max": 5,
+            "type": "piecewise",
+            "orient": "horizontal",
+            "left": "center",
+            "top": 0,
+            "itemWidth": 14,
+            "itemHeight": 14,
+            "pieces": [
+                {"min": 3.5, "max": 5,   "label": "Bueno (≥3.5)",      "color": "#1a9e5c"},
+                {"min": 2.8, "max": 3.5, "label": "Regular (2.8–3.5)", "color": "#F47920"},
+                {"min": 1,   "max": 2.8, "label": "Bajo (<2.8)",       "color": "#d63031"},
+            ],
+            "textStyle": {"fontFamily": _EP_FONT, "fontSize": 11, "color": "#666666"},
         },
-        "yAxis": {
-            "type": "value",
-            "name": "Wellness (1–5)",
-            "nameTextStyle": {"color": "#888888", "fontSize": 11, "fontFamily": _EP_FONT},
-            "min": 0,
-            "max": 5.5,
-            "axisLabel": {"color": "#666666", "fontSize": 12, "fontFamily": _EP_FONT},
-            "axisLine": {"show": False},
-            "axisTick": {"show": False},
-            "splitLine": {"lineStyle": {"color": "#f0f0f0", "type": "solid", "width": 1}},
+        "calendar": {
+            "range": str(anio_calendario),
+            "cellSize": [15, 15],
+            "top": 55,
+            "left": 45,
+            "right": 15,
+            "itemStyle": {"borderWidth": 3, "borderColor": "#F4F4F4"},
+            "splitLine": {"lineStyle": {"color": "#dddddd", "width": 1}},
+            "dayLabel": {
+                "fontFamily": _EP_FONT, "fontSize": 10, "color": "#999999",
+                "nameMap": ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"],
+            },
+            "monthLabel": {
+                "fontFamily": _EP_FONT, "fontSize": 11, "color": "#3D3D3D",
+                "nameMap": ["Ene", "Feb", "Mar", "Abr", "May", "Jun",
+                            "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"],
+            },
+            "yearLabel": {"show": False},
         },
         "series": [{
-            "type": "bar",
-            "data": _barras_w,
-            "barMaxWidth": 42,
-            "label": {
-                "show": True,
-                "position": "top",
-                "formatter": JsCode("function(p){ return p.value.toFixed(2); }"),
-                "fontSize": 11,
-                "color": "#3D3D3D",
-                "fontWeight": "bold",
-                "fontFamily": _EP_FONT,
-            },
-            "markLine": {
-                "symbol": ["none", "none"],
-                "silent": True,
-                "data": [
-                    {
-                        "yAxis": 3.5,
-                        "lineStyle": {"type": "dashed", "color": "#1a9e5c", "width": 1.5},
-                        "label": {"formatter": "3.5 — Óptimo", "color": "#1a9e5c", "position": "insideEndTop", "fontSize": 10},
-                    },
-                    {
-                        "yAxis": 2.8,
-                        "lineStyle": {"type": "dashed", "color": "#d63031", "width": 1.5},
-                        "label": {"formatter": "2.8 — Umbral bajo", "color": "#d63031", "position": "insideEndTop", "fontSize": 10},
-                    },
-                ],
-            },
+            "type": "heatmap",
+            "coordinateSystem": "calendar",
+            "data": _calendar_data,
+            "itemStyle": {"color": "#eeeeee"},  # color de días sin datos
         }],
     }
 
-    st_echarts(options=option_wellness, height="360px")
+    _evento_click_calendario = {"click": "function(params) { return params.value; }"}
+    _dia_clickeado = st_echarts(
+        options=option_heatmap,
+        events=_evento_click_calendario,
+        height="200px",
+        key="heatmap_wellness_anual",
+    )
+
+    if _dia_clickeado:
+        _fecha_click, _wellness_click = _dia_clickeado[0], _dia_clickeado[1]
+        st.markdown(f"**📅 {_fecha_click} — Wellness promedio del equipo: {_wellness_click:.2f}**")
+
+        _detalle_dia = wellness_hist[wellness_hist["fecha"] == pd.Timestamp(_fecha_click)]
+        if not _detalle_dia.empty:
+            _peores = (
+                _detalle_dia.sort_values("wellness_total")
+                [["jugador", "posicion", "wellness_total"]]
+                .head(3)
+                .rename(columns={
+                    "jugador": "Jugador", "posicion": "Posición",
+                    "wellness_total": "Wellness",
+                })
+            )
+            st.caption("Jugadores con wellness más bajo ese día:")
+            st.dataframe(_peores, hide_index=True, width='stretch', height=140)
+    else:
+        st.caption("💡 Hacé clic en un día del calendario para ver el detalle del equipo.")
 
 with col_det:
     # Desglose por ítem de wellness (promedio de los últimos 14 días)

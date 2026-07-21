@@ -16,9 +16,14 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import sqlite3
+import sys
 import os
 from streamlit_echarts import st_echarts, JsCode
 from sklearn.ensemble import RandomForestClassifier
+
+# Permite importar auth.py, que está un directorio arriba (raíz del proyecto)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import auth
 
 # ── Tema visual EQUIPOPHYSICAL ─────────────────────────────────
 _EP_FONT = "'Inter', 'Segoe UI', sans-serif"
@@ -41,6 +46,8 @@ st.set_page_config(
     page_icon="🔬",
     layout="wide",
 )
+
+auth.exigir_acceso("ML_Riesgo")
 
 DB_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),

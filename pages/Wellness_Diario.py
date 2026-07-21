@@ -21,6 +21,7 @@ Escala 1-5 para todos los ítems:
 import streamlit as st
 import pandas as pd
 import sqlite3
+import sys
 import os
 from datetime import date, timedelta
 
@@ -34,6 +35,15 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# Permite importar auth.py, que está un directorio arriba (raíz del proyecto)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import auth
+
+auth.exigir_acceso("Wellness_Diario")
+
+# El médico puede VER esta página pero no cargar datos (solo lectura)
+SOLO_LECTURA = auth.es_solo_lectura("Wellness_Diario")
 
 st.markdown("""
 <style>
@@ -283,6 +293,8 @@ col_tit, col_estado = st.columns([4, 2])
 with col_tit:
     st.title("📝 Carga Diaria de Wellness")
     st.caption(f"Fecha: **{fecha_sel.strftime('%A %d de %B de %Y').capitalize()}**")
+    if SOLO_LECTURA:
+        st.info("👁️ **Modo solo lectura** — tu rol puede ver los datos pero no cargarlos.")
 
 with col_estado:
     # Barra de progreso del día
@@ -394,6 +406,7 @@ df_editado = st.data_editor(
     hide_index=True,
     width='stretch',
     num_rows="fixed",           # no se pueden agregar/quitar filas
+    disabled=SOLO_LECTURA,       # médico: solo puede ver, no editar
     key=f"editor_{fecha_str}_{filtro_pos}",
 )
 
@@ -431,6 +444,7 @@ with col_btn:
         "💾 Guardar wellness",
         type="primary",
         use_container_width=True,
+        disabled=SOLO_LECTURA,
     )
 
 with col_info:
