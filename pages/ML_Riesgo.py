@@ -674,7 +674,7 @@ def main():
         tabla["Riesgo (%)"] = tabla["Riesgo (%)"].round(1)
 
         st.dataframe(
-            tabla.style.applymap(_estilo_riesgo, subset=["Riesgo (%)"]),
+            tabla.style.map(_estilo_riesgo, subset=["Riesgo (%)"]),
             use_container_width=True,
             hide_index=True,
         )

@@ -646,7 +646,7 @@ def main():
                 "notas":       "Notas",
             })
             st.dataframe(
-                hist_display.style.applymap(_color_decision, subset=["Decisión"]),
+                hist_display.style.map(_color_decision, subset=["Decisión"]),
                 use_container_width=True,
                 hide_index=True,
             )
