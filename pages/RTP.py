@@ -9,10 +9,10 @@ Criterios clínicos por tipo de lesión:
   - Aductores: 5 criterios ponderados (pesos suman 100)
 
 Decisión automática por score ponderado:
-  ≥ 85 %  →  APTO              (verde)
-  70-84 % →  APTO CONDICIONADO (naranja)
-  < 70 %  →  NO APTO           (rojo)
-  Criterio bloqueante no cumplido → NO APTO automático
+  ≥ 85 %   APTO              (verde)
+  70-84 %  APTO CONDICIONADO (naranja)
+  < 70 %   NO APTO           (rojo)
+  Criterio bloqueante no cumplido NO APTO automático
 """
 
 import streamlit as st
@@ -27,13 +27,16 @@ from datetime import date
 
 st.set_page_config(
     page_title="RTP — Return to Play",
-    page_icon="🏥",
+    page_icon="",
     layout="wide",
 )
 
-# Permite importar auth.py, que está un directorio arriba (raíz del proyecto)
+# Permite importar auth.py y styles.py, que están un directorio arriba (raíz del proyecto)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import auth
+from styles import apply_styles
+
+apply_styles()
 
 auth.exigir_acceso("RTP")
 
@@ -116,12 +119,12 @@ def guardar_evaluacion(jugador_id, lesion_id, fecha_str, tipo_lesion,
 # ── CRITERIOS POR TIPO DE LESIÓN (Pecci et al. 2026) ─────────
 
 # tipo:
-#   "slider_0_10" →  slider entero 0-10
-#   "porcentaje"  →  número 0-100 con símbolo %
-#   "si_no"       →  radio "Sí" / "No"         (umbral "Sí" para pasar)
-#   "igual_dif"   →  radio "Igual" / "Diferente" (umbral "Igual" para pasar)
+#   "slider_0_10"  slider entero 0-10
+#   "porcentaje"   número 0-100 con símbolo %
+#   "si_no"        radio "Sí" / "No"         (umbral "Sí" para pasar)
+#   "igual_dif"    radio "Igual" / "Diferente" (umbral "Igual" para pasar)
 # bloqueante:
-#   True → si falla, decisión final = NO APTO sin importar el score global
+#   True si falla, decisión final = NO APTO sin importar el score global
 
 CRITERIOS = {
     "isquiotibiales": [
@@ -332,7 +335,7 @@ CRITERIOS = {
     ],
 }
 
-# Mapeo zona_corporal → tipo de criterio
+# Mapeo zona_corporal tipo de criterio
 ZONA_A_TIPO = {
     "isquiotibiales": "isquiotibiales",
     "aductor":        "aductores",
@@ -390,19 +393,17 @@ def decision_texto(score_pct, bloqueantes_ok):
 
 def _badge_decision(decision):
     config = {
-        "APTO":              ("🟢", "#1a7a3a", "APTO"),
-        "APTO_CONDICIONADO": ("🟡", "#b35900", "APTO CONDICIONADO"),
-        "NO_APTO":           ("🔴", "#8b0000", "NO APTO"),
+        "APTO":              ("#1a7a3a", "APTO"),
+        "APTO_CONDICIONADO": ("#b35900", "APTO CONDICIONADO"),
+        "NO_APTO":           ("#8b0000", "NO APTO"),
     }
-    emoji, color, label = config.get(decision, ("⚪", "#555", decision))
+    color, label = config.get(decision, ("#555", decision))
     st.markdown(
         f"""
         <div style="background:{color}22; border:2px solid {color};
                     border-radius:8px; padding:18px; text-align:center;
                     margin-top:8px;">
-            <div style="font-size:2.8rem;">{emoji}</div>
-            <div style="color:{color}; font-size:1.6rem; font-weight:700;
-                        margin-top:4px;">{label}</div>
+            <div style="color:{color}; font-size:1.6rem; font-weight:700;">{label}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -411,18 +412,18 @@ def _badge_decision(decision):
 
 def _badge_criterio(pasa, bloqueante, nombre, ref):
     if pasa:
-        icono, color, fondo = "✅", "#1a7a3a", "#e8f5e9"
+        color, fondo = "#1a7a3a", "#e8f5e9"
     elif bloqueante:
-        icono, color, fondo = "⚠️", "#8b0000", "#ffeaea"
+        color, fondo = "#8b0000", "#ffeaea"
         nombre = f"BLOQUEANTE — {nombre}"
     else:
-        icono, color, fondo = "❌", "#b35900", "#fff8e1"
+        color, fondo = "#b35900", "#fff8e1"
 
     st.markdown(
         f"""
         <div style="background:{fondo}; border-left:4px solid {color};
                     border-radius:4px; padding:8px 12px; margin-bottom:6px;">
-            <b style="color:{color};">{icono} {nombre}</b><br>
+            <b style="color:{color};">{nombre}</b><br>
             <span style="color:#666; font-size:0.82rem;">{ref}</span>
         </div>
         """,
@@ -439,7 +440,7 @@ def _formulario_criterios(criterios_lista):
     """
     valores = {}
     for c in criterios_lista:
-        prefijo = "⚠️ " if c["bloqueante"] else ""
+        prefijo = "BLOQUEANTE — " if c["bloqueante"] else ""
         etiqueta = f"{prefijo}**{c['nombre']}**  \n*{c['ref']}*"
 
         if c["tipo"] == "slider_0_10":
@@ -478,7 +479,7 @@ def _formulario_criterios(criterios_lista):
 # ── PÁGINA PRINCIPAL ──────────────────────────────────────────
 
 def main():
-    st.title("🏥 Return to Play — Pecci et al. (2026)")
+    st.title("Return to Play — Pecci et al. (2026)")
 
     lesionados = cargar_lesionados_activos()
 
@@ -488,7 +489,7 @@ def main():
 
     # ── Sidebar ──────────────────────────────────────────────
     with st.sidebar:
-        st.markdown("### 🔍 Selección")
+        st.markdown("### Selección")
 
         opciones = {
             f"{row.jugador} — {row.zona_corporal} ({int(row.dias_baja)} días)": row
@@ -518,7 +519,7 @@ def main():
         evaluador  = st.text_input("Evaluador", placeholder="Nombre del fisio")
 
     # ── Tabs ─────────────────────────────────────────────────
-    tab_eval, tab_hist = st.tabs(["📋 Evaluación RTP", "📊 Historial"])
+    tab_eval, tab_hist = st.tabs(["Evaluación RTP", "Historial"])
 
     # ── TAB 1: EVALUACIÓN ────────────────────────────────────
     with tab_eval:
@@ -530,7 +531,7 @@ def main():
 
         st.markdown(
             f"**Protocolo aplicado:** `{tipo_lesion.upper()}` — Pecci et al. (2026)  \n"
-            f"Los criterios marcados con ⚠️ son **bloqueantes**: si alguno falla, "
+            f"Los criterios marcados con son **bloqueantes**: si alguno falla, "
             f"la decisión es **NO APTO** independientemente del score global."
         )
         st.divider()
@@ -539,11 +540,13 @@ def main():
         col_form, col_sem = st.columns([3, 2])
 
         with col_form:
-            st.markdown("#### Criterios clínicos")
+            st.markdown('<div class="ep-badge ep-badge-medico">Medico</div>', unsafe_allow_html=True)
+            st.markdown('<div class="ep-section-title">Criterios clínicos</div>', unsafe_allow_html=True)
             valores = _formulario_criterios(criterios_lista)
 
         with col_sem:
-            st.markdown("#### Semáforo RTP")
+            st.markdown('<div class="ep-badge ep-badge-medico">Medico</div>', unsafe_allow_html=True)
+            st.markdown('<div class="ep-section-title">Semáforo RTP</div>', unsafe_allow_html=True)
             score_pct, bloqueantes_ok, detalle = calcular_score(criterios_lista, valores)
             decision = decision_texto(score_pct, bloqueantes_ok)
 
@@ -575,7 +578,7 @@ def main():
             _badge_decision(decision)
 
             if not bloqueantes_ok:
-                st.warning("⚠️ Criterio bloqueante no cumplido → NO APTO automático")
+                st.warning("Criterio bloqueante no cumplido NO APTO automático")
 
             st.markdown("---")
             st.markdown("**Detalle por criterio:**")
@@ -590,7 +593,7 @@ def main():
             height=90,
         )
 
-        if st.button("💾 Guardar evaluación", type="primary", use_container_width=True):
+        if st.button("Guardar evaluación", type="primary", use_container_width=True):
             if not evaluador.strip():
                 st.error("Ingresá el nombre del evaluador antes de guardar.")
             else:
@@ -616,7 +619,7 @@ def main():
                     notas         = notas.strip(),
                 )
                 st.success(
-                    f"✅ Evaluación guardada — **{fila.jugador}** — "
+                    f"Evaluación guardada — **{fila.jugador}** — "
                     f"{fecha_eval} — **{decision}**"
                 )
 

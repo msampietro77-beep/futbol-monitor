@@ -4,8 +4,8 @@ pages/Carga_Gym.py
 Módulo de fuerza y gimnasio.
 
 Dos pestañas:
-  📊 Análisis individual → evolución del 1RM y volumen semanal por jugador
-  🏋️ Registrar sesión   → formulario para ingresar una nueva sesión de gym
+  Análisis individual evolución del 1RM y volumen semanal por jugador
+  Registrar sesión   formulario para ingresar una nueva sesión de gym
 
 Conceptos clave:
   1RM estimado  : peso máximo que un jugador podría mover en 1 repetición
@@ -59,6 +59,7 @@ from metricas import (
     calcular_volumen_sesion,
 )
 import auth
+from styles import apply_styles
 
 
 # ============================================================
@@ -67,10 +68,12 @@ import auth
 
 st.set_page_config(
     page_title="Fuerza y Gym",
-    page_icon="🏋️",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+apply_styles()
 
 auth.exigir_acceso("Carga_Gym")
 
@@ -186,19 +189,19 @@ def ultima_sesion_jugador(jugador_id):
 # ============================================================
 
 with st.sidebar:
-    st.header("🏋️ Fuerza y Gym")
+    st.header("Fuerza y Gym")
     st.divider()
 
-    if st.button("🔄 Actualizar datos", use_container_width=True):
+    if st.button("Actualizar datos", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
     st.divider()
     st.markdown("""
     **Métricas de esta sección:**
-    - **1RM estimado** → máximo teórico en 1 rep (Epley)
-    - **Volumen** → series × reps × kg
-    - **RPE** → esfuerzo percibido (1-10)
+    - **1RM estimado** máximo teórico en 1 rep (Epley)
+    - **Volumen** series × reps × kg
+    - **RPE** esfuerzo percibido (1-10)
     """)
     st.divider()
     st.caption("Sistema de Monitoreo · EQUIPOPHYSICAL")
@@ -208,7 +211,7 @@ with st.sidebar:
 # HEADER
 # ============================================================
 
-st.title("🏋️ Módulo de Fuerza y Gym")
+st.title("Módulo de Fuerza y Gym")
 st.caption(
     "Seguimiento del 1RM estimado, volumen de entrenamiento y registro de sesiones "
     "de fuerza del plantel."
@@ -239,8 +242,8 @@ snapshot_df  = obtener_snapshot()
 # ============================================================
 
 tab_analisis, tab_registro = st.tabs([
-    "📊 Análisis individual",
-    "🏋️ Registrar sesión",
+    "Análisis individual",
+    "Registrar sesión",
 ])
 
 
@@ -313,7 +316,8 @@ with tab_analisis:
     tendencia = tendencia_rm_por_ejercicio(jugador_sel_id, ejercicio_sel)
 
     if not tendencia.empty:
-        st.subheader(f"📈 Evolución del 1RM estimado — {ejercicio_sel}")
+        st.markdown('<div class="ep-badge ep-badge-performance">Performance</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="ep-section-title">Evolución del 1RM estimado — {ejercicio_sel}</div>', unsafe_allow_html=True)
 
         _fechas_rm = [f.strftime("%d/%m/%y") for f in tendencia["fecha"]]
         option_rm = {
@@ -371,7 +375,8 @@ with tab_analisis:
     st.divider()
 
     # --- Gráfico 2: Volumen semanal por ejercicio ---
-    st.subheader("📦 Volumen de entrenamiento semanal")
+    st.markdown('<div class="ep-badge ep-badge-performance">Performance</div>', unsafe_allow_html=True)
+    st.markdown('<div class="ep-section-title">Volumen de entrenamiento semanal</div>', unsafe_allow_html=True)
 
     vol_semanal = resumen_volumen_semanal(jugador_sel_id)
 
@@ -448,7 +453,7 @@ with tab_analisis:
     st.divider()
 
     # --- Tabla de historial completo ---
-    with st.expander("📋 Historial completo de sesiones"):
+    with st.expander("Historial completo de sesiones"):
         df_hist = calcular_volumen_sesion(df_jug).copy()
         df_hist["fecha"] = df_hist["fecha"].dt.strftime("%d/%m/%Y")
         df_hist = df_hist[[
@@ -469,7 +474,8 @@ with tab_analisis:
     st.divider()
 
     # --- Comparativa del plantel: 1RM actual en un ejercicio ---
-    st.subheader("👥 Comparativa del plantel — 1RM actual")
+    st.markdown('<div class="ep-badge ep-badge-performance">Performance</div>', unsafe_allow_html=True)
+    st.markdown('<div class="ep-section-title">Comparativa del plantel — 1RM actual</div>', unsafe_allow_html=True)
 
     ejercicio_comp = st.selectbox(
         "Ejercicio para comparar el plantel",
@@ -563,7 +569,8 @@ function(params) {
 
 with tab_registro:
 
-    st.subheader("🏋️ Nueva sesión de gym")
+    st.markdown('<div class="ep-badge ep-badge-performance">Performance</div>', unsafe_allow_html=True)
+    st.markdown('<div class="ep-section-title">Nueva sesión de gym</div>', unsafe_allow_html=True)
     st.caption(
         "Ingresá los ejercicios de la sesión. "
         "El 1RM estimado se calcula automáticamente con la fórmula de Epley."
@@ -592,7 +599,7 @@ with tab_registro:
     if resultado_ultima:
         ultima_df, ultima_fecha_dt = resultado_ultima
         with st.expander(
-            f"📋 Última sesión registrada: {ultima_fecha_dt.strftime('%d/%m/%Y')}"
+            f"Última sesión registrada: {ultima_fecha_dt.strftime('%d/%m/%Y')}"
         ):
             ultima_mostrar = ultima_df.copy()
             ultima_mostrar.columns = ["Ejercicio", "Series", "Reps", "Carga (kg)", "RPE"]
@@ -726,7 +733,7 @@ with tab_registro:
 
     with col_btn_r:
         guardar_reg = st.button(
-            "💾 Guardar sesión",
+            "Guardar sesión",
             type="primary",
             use_container_width=True,
         )
@@ -741,7 +748,7 @@ with tab_registro:
     # Ejecutar guardado
     if guardar_reg:
         if df_sesion.empty:
-            st.error("❌ No hay ejercicios para guardar. Completá la tabla.")
+            st.error("No hay ejercicios para guardar. Completá la tabla.")
         else:
             try:
                 # Validar que no haya celdas vacías en columnas obligatorias
@@ -751,7 +758,7 @@ with tab_registro:
                     df_sesion["Repeticiones"].isna()
                 ]
                 if not vacias.empty:
-                    st.error("❌ Hay filas incompletas. Completá ejercicio, carga y repeticiones.")
+                    st.error("Hay filas incompletas. Completá ejercicio, carga y repeticiones.")
                 else:
                     n_guardados = guardar_sesion(
                         jugador_id  = jugador_reg_id,
@@ -762,7 +769,7 @@ with tab_registro:
                     st.cache_data.clear()
 
                     st.success(
-                        f"✅ **{n_guardados} ejercicios guardados** para "
+                        f"**{n_guardados} ejercicios guardados** para "
                         f"{jugador_reg_nombre.split('(')[0].strip()} "
                         f"— {fecha_reg.strftime('%d/%m/%Y')}. "
                         f"Los gráficos ya reflejan los nuevos datos."
@@ -772,17 +779,17 @@ with tab_registro:
                     rpe_prom = df_sesion["RPE"].mean()
                     if rpe_prom >= 9:
                         st.warning(
-                            f"⚠️ RPE promedio muy alto ({rpe_prom:.1f}/10). "
+                            f"RPE promedio muy alto ({rpe_prom:.1f}/10). "
                             f"Revisar carga para la próxima sesión."
                         )
                     elif rpe_prom >= 7.5:
                         st.info(
-                            f"📊 RPE promedio: {rpe_prom:.1f}/10 — "
+                            f"RPE promedio: {rpe_prom:.1f}/10 — "
                             f"sesión de carga moderada-alta."
                         )
 
             except Exception as e:
-                st.error(f"❌ Error al guardar: {e}")
+                st.error(f"Error al guardar: {e}")
 
 
 # ============================================================
@@ -791,6 +798,6 @@ with tab_registro:
 
 st.divider()
 st.caption(
-    "🏋️ Módulo de Fuerza y Gym · EQUIPOPHYSICAL · "
+    "Módulo de Fuerza y Gym · EQUIPOPHYSICAL · "
     "1RM estimado por fórmula de Epley: carga × (1 + reps / 30)"
 )

@@ -4,10 +4,10 @@ pages/Perfil_Jugador.py
 Vista de riesgo del plantel y perfil individual por jugador.
 
 Dos pestañas:
-  1. Vista de equipo → scatter ACWR (eje X) vs Wellness (eje Y), un punto
+  1. Vista de equipo scatter ACWR (eje X) vs Wellness (eje Y), un punto
      por jugador, con cuadrantes coloreados según la zona de riesgo ACWR
      (Gabbett 2016) — la misma clasificación que ya usa el Dashboard.
-  2. Perfil individual → radar de 6 dimensiones (wellness, carga, ACWR,
+  2. Perfil individual radar de 6 dimensiones (wellness, carga, ACWR,
      fuerza, sueño, estrés) comparando al jugador seleccionado contra el
      promedio del plantel.
 
@@ -26,6 +26,7 @@ import pandas as pd
 from streamlit_echarts import st_echarts, JsCode
 
 import auth
+from styles import apply_styles
 from metricas import (
     cargar_jugadores,
     resumen_acwr_plantel,
@@ -41,10 +42,12 @@ from metricas import (
 
 st.set_page_config(
     page_title="Perfil de Jugador",
-    page_icon="🧭",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+apply_styles()
 
 auth.exigir_acceso("Perfil_Jugador")
 
@@ -80,8 +83,8 @@ _EP_ANIM = {
 # ============================================================
 
 with st.sidebar:
-    st.header("🧭 Perfil de Jugador")
-    if st.button("🔄 Actualizar datos", width='stretch'):
+    st.header("Perfil de Jugador")
+    if st.button("Actualizar datos", width='stretch'):
         st.cache_data.clear()
         st.rerun()
     st.divider()
@@ -200,14 +203,14 @@ promedio_equipo = {col: round(float(datos[col].mean()), 1) for col, _ in DIMENSI
 # HEADER
 # ============================================================
 
-st.title("🧭 Perfil de Jugador y Mapa de Riesgo")
+st.title("Perfil de Jugador y Mapa de Riesgo")
 st.caption(
     "Vista de equipo (ACWR vs Wellness) y perfil individual de 6 dimensiones "
     "comparado contra el promedio del plantel."
 )
 st.divider()
 
-tab_equipo, tab_individual = st.tabs(["📊 Vista de equipo (riesgo)", "👤 Perfil individual"])
+tab_equipo, tab_individual = st.tabs(["Vista de equipo (riesgo)", "Perfil individual"])
 
 
 # ============================================================
@@ -215,7 +218,8 @@ tab_equipo, tab_individual = st.tabs(["📊 Vista de equipo (riesgo)", "👤 Per
 # ============================================================
 
 with tab_equipo:
-    st.subheader("🎯 Mapa de Riesgo del Plantel — ACWR vs Wellness")
+    st.markdown('<div class="ep-badge ep-badge-performance">Performance</div>', unsafe_allow_html=True)
+    st.markdown('<div class="ep-section-title">Mapa de Riesgo del Plantel — ACWR vs Wellness</div>', unsafe_allow_html=True)
     st.caption(
         "Cada punto es un jugador. El color de fondo marca la zona clínica de "
         "ACWR (Gabbett 2016); las líneas punteadas marcan los umbrales de wellness."
@@ -324,8 +328,8 @@ function (p) {
     st_echarts(options=option_scatter, height="480px")
 
     st.markdown("""
-    **Zonas ACWR (fondo):** 🟡 desentrenamiento `<0.8` · 🟢 óptima `0.8–1.3` ·
-    🟠 precaución `1.3–1.5` · 🔴 alto riesgo `>1.5`
+    **Zonas ACWR (fondo):** desentrenamiento `<0.8` · óptima `0.8–1.3` ·
+    precaución `1.3–1.5` · alto riesgo `>1.5`
     """)
 
 
@@ -334,7 +338,8 @@ function (p) {
 # ============================================================
 
 with tab_individual:
-    st.subheader("🧭 Radar de 6 Dimensiones — Jugador vs Promedio del Equipo")
+    st.markdown('<div class="ep-badge ep-badge-performance">Performance</div>', unsafe_allow_html=True)
+    st.markdown('<div class="ep-section-title">Radar de 6 Dimensiones — Jugador vs Promedio del Equipo</div>', unsafe_allow_html=True)
 
     opciones_jugadores = {
         f"#{int(row['numero'])} {row['jugador']} ({row['posicion']})": int(row["jugador_id"])
@@ -412,7 +417,7 @@ with tab_individual:
 
     # ── Historial RPE vs TQR — últimos 14 días ──────────────────
     st.divider()
-    st.markdown(f"#### 📈 Historial RPE vs TQR — {fila_jugador['jugador']} (últimos 14 días)")
+    st.markdown(f"#### Historial RPE vs TQR — {fila_jugador['jugador']} (últimos 14 días)")
     st.caption(
         "Ambas series comparten la misma escala 1-10: RPE alto con TQR bajo "
         "sostenido en el tiempo es la señal de alerta a vigilar."

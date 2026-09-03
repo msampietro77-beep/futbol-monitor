@@ -19,6 +19,7 @@ from streamlit_echarts import st_echarts, JsCode
 from datetime import date, timedelta
 
 import auth
+from styles import apply_styles
 
 
 # ============================================================
@@ -27,10 +28,12 @@ import auth
 
 st.set_page_config(
     page_title="Dashboard",
-    page_icon="⚽",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+apply_styles()
 
 st.markdown("""
 <style>
@@ -64,9 +67,9 @@ import database, sqlite3
 
 if not os.path.exists(DB_PATH):
     # Primera vez: crear tablas + simular 90 días de datos
-    with st.spinner("⏳ Primera ejecución: creando base de datos con datos simulados..."):
+    with st.spinner("Primera ejecución: creando base de datos con datos simulados..."):
         database.inicializar_base_datos()
-    st.success("✅ Base de datos creada correctamente. Cargando el sistema...")
+    st.success("Base de datos creada correctamente. Cargando el sistema...")
     st.rerun()
 else:
     # DB ya existe: garantizar que las tablas nuevas estén creadas
@@ -164,8 +167,8 @@ def obtener_estado_rtp():
 # ============================================================
 
 with st.sidebar:
-    st.header("⚙️ Opciones")
-    if st.button("🔄 Actualizar datos", width='stretch'):
+    st.header("Opciones")
+    if st.button("Actualizar datos", width='stretch'):
         st.cache_data.clear()
         st.rerun()
 
@@ -188,7 +191,7 @@ auth.mostrar_panel_usuario_sidebar()
 # ============================================================
 
 if not auth.tiene_acceso("Dashboard"):
-    st.title("⚽ Monitor de Rendimiento del Plantel")
+    st.title("Monitor de Rendimiento del Plantel")
     st.success(
         f"Sesión iniciada como "
         f"**{auth.ROLES_LEGIBLES.get(auth.rol_actual(), auth.rol_actual())}**"
@@ -198,7 +201,7 @@ if not auth.tiene_acceso("Dashboard"):
         for p in auth.PAGINAS_POR_ROL.get(auth.rol_actual(), [])
     ]
     if _paginas_rol:
-        st.info("📂 Usá el menú lateral para acceder a tus módulos: " + ", ".join(_paginas_rol))
+        st.info("Usá el menú lateral para acceder a tus módulos: " + ", ".join(_paginas_rol))
     else:
         st.warning("Tu rol todavía no tiene módulos asignados en el sistema. Este módulo está en desarrollo.")
     st.stop()
@@ -256,11 +259,11 @@ def _ep_gradient(top_color, bot_color):
 
 col_titulo, col_fecha = st.columns([5, 1])
 with col_titulo:
-    st.title("⚽ Monitor de Rendimiento del Plantel")
+    st.title("Monitor de Rendimiento del Plantel")
 with col_fecha:
     st.markdown(
         f"<p style='text-align:right; color:gray; padding-top:18px; font-size:1.1rem'>"
-        f"📅 {r['fecha']}</p>",
+        f"{r['fecha']}</p>",
         unsafe_allow_html=True,
     )
 
@@ -324,23 +327,23 @@ with col_gauge:
     st_echarts(options=option_gauge, height="230px")
     st.markdown(
         "<p style='text-align:center; color:#888; font-size:0.85rem; margin-top:-14px'>"
-        "📊 Disponibilidad del plantel</p>",
+        "Disponibilidad del plantel</p>",
         unsafe_allow_html=True,
     )
 
 with col_metricas:
     c1, c2, c3 = st.columns(3)
-    c1.metric("👥 Plantel total",  r["total_plantel"])
-    c2.metric("✅ Disponibles",    r["disponibles"])
-    c3.metric("🚑 Lesionados",     r["lesionados"],
+    c1.metric("Plantel total",  r["total_plantel"])
+    c2.metric("Disponibles",    r["disponibles"])
+    c3.metric("Lesionados",     r["lesionados"],
               delta=f"-{r['lesionados']}", delta_color="inverse")
 
     c5, c6, c7 = st.columns(3)
-    c5.metric("🔴 Alerta roja",     r["alertas_rojas"],
+    c5.metric("Alerta roja",     r["alertas_rojas"],
               delta=None if r["alertas_rojas"] == 0 else f"{r['alertas_rojas']} activas",
               delta_color="inverse")
-    c6.metric("🟠 Alerta naranja",  r["alertas_naranja"])
-    c7.metric("🟡 Alerta amarilla", r["alertas_amarillas"])
+    c6.metric("Alerta naranja",  r["alertas_naranja"])
+    c7.metric("Alerta amarilla", r["alertas_amarillas"])
 
 st.divider()
 
@@ -349,12 +352,12 @@ st.divider()
 # SECCIÓN 2: SEMÁFORO DE ALERTAS POR JUGADOR
 # ============================================================
 
-st.subheader("🚦 Estado del Plantel")
+st.markdown('<div class="ep-badge ep-badge-performance">Performance</div>', unsafe_allow_html=True)
+st.markdown('<div class="ep-section-title">Estado del Plantel</div>', unsafe_allow_html=True)
 
 if filtro_pos != "Todas":
     disponibles = disponibles[disponibles["posicion"] == filtro_pos]
 
-ICONO = {"ROJA": "🔴", "NARANJA": "🟠", "AMARILLA": "🟡", "VERDE": "🟢"}
 COLOR_FONDO = {
     "ROJA":     "background-color:#FF4B4B; color:white; font-weight:bold; text-align:center",
     "NARANJA":  "background-color:#FF8C00; color:white; font-weight:bold; text-align:center",
@@ -369,7 +372,6 @@ semaforo = disponibles[[
     "alerta", "motivo",
 ]].copy()
 
-semaforo.insert(0, " ", semaforo["alerta"].map(ICONO))
 semaforo["training_load"] = semaforo["training_load"].fillna(0).astype(int)
 semaforo = semaforo.rename(columns={
     "numero":        "#",
@@ -415,7 +417,8 @@ st.divider()
 # SECCIÓN 3: EVOLUCIÓN ACWR — ÚLTIMOS 30 DÍAS
 # ============================================================
 
-st.subheader("📉 Evolución ACWR del Plantel — Últimos 30 días")
+st.markdown('<div class="ep-badge ep-badge-performance">Performance</div>', unsafe_allow_html=True)
+st.markdown('<div class="ep-section-title">Evolución ACWR del Plantel — Últimos 30 días</div>', unsafe_allow_html=True)
 
 acwr_hist = obtener_acwr_historico()
 fecha_max_a = acwr_hist["fecha"].max()
@@ -490,7 +493,7 @@ _series_acwr.append({
 })
 
 # ── Una línea por jugador ────────────────────────────────────────────────
-# Jugadores sin alerta usan prefijo "_" → aparecen en chart pero no en leyenda ni tooltip
+# Jugadores sin alerta usan prefijo "_" aparecen en chart pero no en leyenda ni tooltip
 for jugador_id, grupo in acwr_30d.groupby("jugador_id"):
     alerta = alertas_dict.get(jugador_id, "VERDE")
     nombre = grupo["jugador"].iloc[0]
@@ -514,7 +517,7 @@ for jugador_id, grupo in acwr_30d.groupby("jugador_id"):
 
 # ── Promedio del equipo (línea oscura destacada + markLine de referencia) ──
 _series_acwr.append({
-    "name": "📊 Promedio equipo",
+    "name": "Promedio equipo",
     "type": "line",
     "data": [
         [r["fecha"].strftime("%Y-%m-%d"), round(float(r["acwr"]), 3)]
@@ -559,7 +562,7 @@ option_acwr = {
     },
     "legend": {
         **_EP_LEGEND,
-        "data": _nombres_con_alerta + ["📊 Promedio equipo"],
+        "data": _nombres_con_alerta + ["Promedio equipo"],
     },
     "grid": {"top": 40, "bottom": 80, "left": 60, "right": 24, "containLabel": False},
     "xAxis": {
@@ -592,7 +595,8 @@ st.divider()
 # SECCIÓN 4: TABLA ACWR DEL PLANTEL
 # ============================================================
 
-st.subheader("📈 ACWR del Plantel — Snapshot del día")
+st.markdown('<div class="ep-badge ep-badge-performance">Performance</div>', unsafe_allow_html=True)
+st.markdown('<div class="ep-section-title">ACWR del Plantel — Snapshot del día</div>', unsafe_allow_html=True)
 
 col_graf, col_tabla = st.columns([1, 2])
 
@@ -601,18 +605,18 @@ with col_graf:
     conteo_zonas.columns = ["zona", "cantidad"]
 
     etiquetas = {
-        "alto_riesgo":      "🔴 Alto riesgo",
-        "precaucion":       "🟠 Precaución",
-        "optima":           "🟢 Óptima",
-        "desentrenamiento": "🟡 Desentren.",
-        "sin datos":        "⚪ Sin datos",
+        "alto_riesgo":      "Alto riesgo",
+        "precaucion":       "Precaución",
+        "optima":           "Óptima",
+        "desentrenamiento": "Desentren.",
+        "sin datos":        "Sin datos",
     }
     colores_zona = {
-        "🔴 Alto riesgo":   "#FF4B4B",
-        "🟠 Precaución":    "#FF8C00",
-        "🟢 Óptima":        "#21C354",
-        "🟡 Desentren.":    "#FFD700",
-        "⚪ Sin datos":     "#CCCCCC",
+        "Alto riesgo":   "#FF4B4B",
+        "Precaución":    "#FF8C00",
+        "Óptima":        "#21C354",
+        "Desentren.":    "#FFD700",
+        "Sin datos":     "#CCCCCC",
     }
     conteo_zonas["zona_label"] = conteo_zonas["zona"].map(etiquetas)
 
@@ -668,18 +672,18 @@ with col_graf:
 
     st.markdown("""
     **Zonas ACWR:**
-    - 🟡 `< 0.8` → Desentrenamiento
-    - 🟢 `0.8 – 1.3` → Zona óptima
-    - 🟠 `1.3 – 1.5` → Precaución
-    - 🔴 `> 1.5` → Alto riesgo
+    - `< 0.8` Desentrenamiento
+    - `0.8 – 1.3` Zona óptima
+    - `1.3 – 1.5` Precaución
+    - `> 1.5` Alto riesgo
     """)
 
 with col_tabla:
     zona_labels = {
-        "optima":           "✅ Óptima",
-        "precaucion":       "⚠️ Precaución",
-        "alto_riesgo":      "🚨 Alto riesgo",
-        "desentrenamiento": "⬇️ Desentren.",
+        "optima":           "Óptima",
+        "precaucion":       "Precaución",
+        "alto_riesgo":      "Alto riesgo",
+        "desentrenamiento": "Desentren.",
         "sin datos":        "—",
     }
     tabla_acwr = acwr_df[["numero", "jugador", "posicion",
@@ -710,7 +714,8 @@ st.divider()
 # SECCIÓN 5: WELLNESS DEL EQUIPO — CALENDARIO ANUAL
 # ============================================================
 
-st.subheader("💚 Wellness del Equipo — Calendario Anual")
+st.markdown('<div class="ep-badge ep-badge-medico">Medico</div>', unsafe_allow_html=True)
+st.markdown('<div class="ep-section-title">Wellness del Equipo — Calendario Anual</div>', unsafe_allow_html=True)
 
 wellness_hist = obtener_wellness_historico()
 fecha_max_w   = wellness_hist["fecha"].max()
@@ -759,9 +764,9 @@ with col_bien:
             **_EP_TOOLTIP,
             "formatter": JsCode("""
 function (p) {
-    var estado = p.value[1] >= 3.5 ? '✅ Bueno'
-               : p.value[1] >= 2.8 ? '⚠️ Regular'
-               : '🔴 Bajo';
+    var estado = p.value[1] >= 3.5 ? 'Bueno'
+               : p.value[1] >= 2.8 ? 'Regular'
+               : 'Bajo';
     return '<b>' + p.value[0] + '</b><br/>Wellness: <b>' +
            p.value[1].toFixed(2) + '</b><br/>' + estado;
 }
@@ -820,7 +825,7 @@ function (p) {
 
     if _dia_clickeado:
         _fecha_click, _wellness_click = _dia_clickeado[0], _dia_clickeado[1]
-        st.markdown(f"**📅 {_fecha_click} — Wellness promedio del equipo: {_wellness_click:.2f}**")
+        st.markdown(f"**{_fecha_click} — Wellness promedio del equipo: {_wellness_click:.2f}**")
 
         _detalle_dia = wellness_hist[wellness_hist["fecha"] == pd.Timestamp(_fecha_click)]
         if not _detalle_dia.empty:
@@ -836,19 +841,19 @@ function (p) {
             st.caption("Jugadores con wellness más bajo ese día:")
             st.dataframe(_peores, hide_index=True, width='stretch', height=140)
     else:
-        st.caption("💡 Hacé clic en un día del calendario para ver el detalle del equipo.")
+        st.caption("Hacé clic en un día del calendario para ver el detalle del equipo.")
 
 with col_det:
     # Desglose por ítem de wellness (promedio de los últimos 14 días)
     items_wellness = ["fatiga", "calidad_sueno", "horas_sueno",
                       "dolor_muscular", "humor", "estres"]
     etiquetas_items = {
-        "fatiga":         "😴 Fatiga",
-        "calidad_sueno":  "🌙 Calidad sueño",
-        "horas_sueno":    "⏰ Horas sueño",
-        "dolor_muscular": "💪 Dolor muscular",
-        "humor":          "😊 Humor",
-        "estres":         "🧠 Estrés",
+        "fatiga":         "Fatiga",
+        "calidad_sueno":  "Calidad sueño",
+        "horas_sueno":    "Horas sueño",
+        "dolor_muscular": "Dolor muscular",
+        "humor":          "Humor",
+        "estres":         "Estrés",
     }
 
     promedios_items = (
@@ -860,9 +865,9 @@ with col_det:
     promedios_items["Ítem"] = promedios_items["item"].map(etiquetas_items)
     promedios_items["Promedio"] = promedios_items["promedio"].round(2)
 
-    # Nota: fatiga, dolor, estrés → más alto = peor
+    # Nota: fatiga, dolor, estrés más alto = peor
     promedios_items["Referencia"] = promedios_items["item"].apply(
-        lambda x: "⚠️ más alto = peor" if x in ["fatiga", "dolor_muscular", "estres"] else "✅ más alto = mejor"
+        lambda x: "más alto = peor" if x in ["fatiga", "dolor_muscular", "estres"] else "más alto = mejor"
     )
 
     st.markdown("**Promedios por ítem (14d):**")
@@ -894,7 +899,8 @@ st.divider()
 # recuperar adecuadamente.
 # ============================================================
 
-st.subheader("⚖️ Balance RPE:TQR del Día")
+st.markdown('<div class="ep-badge ep-badge-performance">Performance</div>', unsafe_allow_html=True)
+st.markdown('<div class="ep-section-title">Balance RPE:TQR del Día</div>', unsafe_allow_html=True)
 st.caption(
     "Eje X: RPE de la sesión de hoy · Eje Y: TQR de hoy. "
     "Solo se muestran jugadores con ambos datos cargados."
@@ -1020,24 +1026,24 @@ function (p) {
         st_echarts(options=option_scatter_rt, height="420px")
 
         st.markdown("""
-        **Cuadrantes:** 🔴 Alto RPE + Bajo TQR = riesgo · 🟢 Alto RPE + Alto TQR = óptima ·
-        🟠 Bajo RPE + Bajo TQR = investigar · 🔵 Bajo RPE + Alto TQR = recuperando
+        **Cuadrantes:** Alto RPE + Bajo TQR = riesgo · Alto RPE + Alto TQR = óptima ·
+        Bajo RPE + Bajo TQR = investigar · Bajo RPE + Alto TQR = recuperando
         """)
 
     with col_alertas_rt:
         st.markdown("**Alertas RPE:TQR de hoy**")
-        st.caption("RPE > 7 y TQR < 5 → naranja · RPE > 8 y TQR < 4 → roja")
+        st.caption("RPE > 7 y TQR < 5 naranja · RPE > 8 y TQR < 4 roja")
 
         n_roja    = int((rpe_tqr_df["alerta"] == "ROJA").sum())
         n_naranja = int((rpe_tqr_df["alerta"] == "NARANJA").sum())
 
         m1, m2 = st.columns(2)
-        m1.metric("🔴 Roja",    n_roja)
-        m2.metric("🟠 Naranja", n_naranja)
+        m1.metric("Roja",    n_roja)
+        m2.metric("Naranja", n_naranja)
 
         alertados = rpe_tqr_df[rpe_tqr_df["alerta"].isin(["ROJA", "NARANJA"])].copy()
         if alertados.empty:
-            st.success("✅ Sin cruces de riesgo RPE:TQR hoy.")
+            st.success("Sin cruces de riesgo RPE:TQR hoy.")
         else:
             tabla_rt = alertados[["numero", "jugador", "rpe", "tqr", "indice_rpe_tqr", "alerta"]].rename(
                 columns={
@@ -1054,10 +1060,11 @@ st.divider()
 # SECCIÓN 6: JUGADORES NO DISPONIBLES (LESIONADOS)
 # ============================================================
 
-st.subheader("🚑 Jugadores No Disponibles")
+st.markdown('<div class="ep-badge ep-badge-medico">Medico</div>', unsafe_allow_html=True)
+st.markdown('<div class="ep-section-title">Jugadores No Disponibles</div>', unsafe_allow_html=True)
 
 if lesionados.empty:
-    st.success("✅ No hay jugadores lesionados. Plantel completo disponible.")
+    st.success("No hay jugadores lesionados. Plantel completo disponible.")
 else:
     hoy = pd.Timestamp(date.today())
 
@@ -1097,10 +1104,10 @@ else:
                     st.caption(jug.get("posicion", "").capitalize())
 
                     st.markdown(
-                        f"🏥 **{str(jug.get('tipo_lesion','')).capitalize()}** "
+                        f"**{str(jug.get('tipo_lesion','')).capitalize()}** "
                         f"— {jug.get('zona_corporal','')}"
                     )
-                    st.markdown(f"📅 Inicio: `{fecha_ini.strftime('%d/%m/%Y')}`")
+                    st.markdown(f"Inicio: `{fecha_ini.strftime('%d/%m/%Y')}`")
 
                     # Métricas de tiempo
                     m1, m2 = st.columns(2)
@@ -1148,7 +1155,8 @@ else:
 # ============================================================
 
 st.divider()
-st.subheader("🏥 Estado Return to Play (RTP)")
+st.markdown('<div class="ep-badge ep-badge-medico">Medico</div>', unsafe_allow_html=True)
+st.markdown('<div class="ep-section-title">Estado Return to Play (RTP)</div>', unsafe_allow_html=True)
 
 rtp_df = obtener_estado_rtp()
 
@@ -1160,17 +1168,17 @@ if rtp_df.empty:
 else:
     # Métricas resumen RTP
     n_en_rtp   = len(rtp_df)
-    n_avanzados = int((rtp_df["etapa_orden"] >= 5).sum())   # etapas 5 y 6 → cerca de volver
+    n_avanzados = int((rtp_df["etapa_orden"] >= 5).sum())   # etapas 5 y 6 cerca de volver
     eva_prom   = rtp_df["eva_ultimo"].mean()
     conf_prom  = rtp_df["confianza_ultimo"].mean()
 
     cr1, cr2, cr3, cr4 = st.columns(4)
-    cr1.metric("🔄 Jugadores en RTP",        n_en_rtp)
-    cr2.metric("🔜 Cerca de volver (E5-E6)", n_avanzados)
-    cr3.metric("📊 EVA promedio plantel",
+    cr1.metric("Jugadores en RTP",        n_en_rtp)
+    cr2.metric("Cerca de volver (E5-E6)", n_avanzados)
+    cr3.metric("EVA promedio plantel",
                f"{eva_prom:.1f}" if not pd.isna(eva_prom) else "—",
                help="Promedio de dolor (0-10) en última sesión. Menor es mejor.")
-    cr4.metric("💪 Confianza promedio",
+    cr4.metric("Confianza promedio",
                f"{conf_prom:.1f}" if not pd.isna(conf_prom) else "—",
                help="Promedio de confianza en zona lesionada (0-10). Mayor es mejor.")
 
@@ -1236,7 +1244,7 @@ else:
                     mc3.metric("Conf.", conf_txt)
 
                     # Última sesión y estado de avance
-                    estado_rtp = "✅ Aprobó avance" if jug_rtp["avanza"] else "🔄 Continúa etapa"
+                    estado_rtp = "Aprobó avance" if jug_rtp["avanza"] else "Continúa etapa"
                     st.markdown(
                         f"<div style='font-size:0.8rem; color:gray; margin-top:4px'>"
                         f"Última sesión: {jug_rtp['ultima_sesion']} · {estado_rtp}"
@@ -1251,7 +1259,7 @@ else:
 
 st.divider()
 st.caption(
-    f"⚽ Sistema de Monitoreo de Rendimiento · EQUIPOPHYSICAL · "
+    f"Sistema de Monitoreo de Rendimiento · EQUIPOPHYSICAL · "
     f"Datos al {r['fecha']} · "
     f"ACWR por método EWMA (aguda 7d / crónica 28d)"
 )

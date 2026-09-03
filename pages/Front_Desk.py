@@ -4,9 +4,9 @@ pages/Front_Desk.py
 Central diaria de carga de datos para el staff.
 
 Cada área del cuerpo técnico entra aquí a registrar sus datos del día:
-  🏃 Carga Interna → RPE + minutos + tipo de sesión por jugador
-  🏥 Lesiones      → registrar nueva lesión / dar de alta
-  📋 Estado del día → qué áreas completaron la carga de hoy
+  Carga Interna RPE + minutos + tipo de sesión por jugador
+  Lesiones      registrar nueva lesión / dar de alta
+  Estado del día qué áreas completaron la carga de hoy
 
 Las áreas con página propia (Wellness y Fuerza/Gym) tienen acceso directo
 desde el panel de estado.
@@ -30,6 +30,7 @@ from metricas import (
     cargar_wellness,
 )
 import auth
+from styles import apply_styles
 
 
 # ============================================================
@@ -38,10 +39,12 @@ import auth
 
 st.set_page_config(
     page_title="Front Desk",
-    page_icon="📋",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+apply_styles()
 
 auth.exigir_acceso("Front_Desk")
 
@@ -167,7 +170,7 @@ def construir_form_carga(jugadores_df, hoy_df, ayer_df, filtro_pos):
     Arma la tabla editable de carga interna.
 
     Prioridad de pre-relleno: datos de hoy > datos de ayer > valores por defecto.
-    Si ya hay datos de hoy → columna ✓ = ✅ (ya guardado).
+    Si ya hay datos de hoy columna = (ya guardado).
     """
     DEFECTO_TIPO = "entrenamiento"
     DEFECTO_RPE  = 6
@@ -202,7 +205,7 @@ def construir_form_carga(jugadores_df, hoy_df, ayer_df, filtro_pos):
             "#":              int(jug["numero"]),
             "Jugador":        jug["jugador"],
             "Pos.":           jug["posicion"][:3].upper(),
-            "✓":              "✅" if ya_guardado else "⬜",
+            "Hoy":           "Si" if ya_guardado else "No",
             "Tipo de sesión": tipo,
             "RPE":            rpe  if tipo != "descanso" else 0,
             "Minutos":        mins if tipo != "descanso" else 0,
@@ -216,10 +219,10 @@ def construir_form_carga(jugadores_df, hoy_df, ayer_df, filtro_pos):
 # ============================================================
 
 with st.sidebar:
-    st.header("📋 Front Desk")
+    st.header("Front Desk")
     st.divider()
 
-    fecha_sel = st.date_input("📅 Fecha de trabajo", value=date.today())
+    fecha_sel = st.date_input("Fecha de trabajo", value=date.today())
     fecha_str  = str(fecha_sel)
     fecha_ayer = str(fecha_sel - timedelta(days=1))
 
@@ -233,7 +236,7 @@ with st.sidebar:
 
     st.divider()
 
-    if st.button("🔄 Actualizar datos", use_container_width=True):
+    if st.button("Actualizar datos", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
 
@@ -269,7 +272,7 @@ n_activas   = len(lesiones_act_df)
 
 col_tit, col_fec = st.columns([5, 1])
 with col_tit:
-    st.title("📋 Front Desk — Carga Diaria")
+    st.title("Front Desk — Carga Diaria")
     st.caption(
         f"Central de ingreso de datos para el staff · "
         f"**{fecha_sel.strftime('%A %d de %B de %Y').capitalize()}**"
@@ -277,7 +280,7 @@ with col_tit:
 with col_fec:
     st.markdown(
         f"<p style='text-align:right; color:gray; padding-top:18px; font-size:1.1rem'>"
-        f"📅 {fecha_sel.strftime('%d/%m/%Y')}</p>",
+        f"{fecha_sel.strftime('%d/%m/%Y')}</p>",
         unsafe_allow_html=True,
     )
 
@@ -286,7 +289,8 @@ with col_fec:
 # PANEL DE ESTADO — COMPLETITUD DEL DÍA
 # ============================================================
 
-st.subheader("📊 Estado de carga del día")
+st.markdown('<div class="ep-badge ep-badge-performance">Performance</div>', unsafe_allow_html=True)
+st.markdown('<div class="ep-section-title">Estado de carga del día</div>', unsafe_allow_html=True)
 
 col_a, col_b, col_c, col_d = st.columns(4)
 
@@ -295,7 +299,7 @@ color_ci = _color_completitud(pct_carga)
 with col_a:
     with st.container(border=True):
         st.markdown(
-            f"<div style='font-size:1.1rem; font-weight:bold'>🏃 Carga Interna</div>",
+            f"<div style='font-size:1.1rem; font-weight:bold'>Carga Interna</div>",
             unsafe_allow_html=True,
         )
         st.markdown(
@@ -306,18 +310,18 @@ with col_a:
         st.progress(pct_carga / 100)
         st.caption(f"{len(hoy_carga_df)} / {n_total} jugadores cargados")
         if pct_carga == 100:
-            st.success("✅ Completo")
+            st.success("Completo")
         elif pct_carga > 0:
-            st.warning("⏳ En proceso")
+            st.warning("En proceso")
         else:
-            st.error("❌ Sin cargar")
+            st.error("Sin cargar")
 
 # --- Wellness ---
 color_w = _color_completitud(pct_wellness)
 with col_b:
     with st.container(border=True):
         st.markdown(
-            f"<div style='font-size:1.1rem; font-weight:bold'>💚 Wellness</div>",
+            f"<div style='font-size:1.1rem; font-weight:bold'>Wellness</div>",
             unsafe_allow_html=True,
         )
         st.markdown(
@@ -328,17 +332,17 @@ with col_b:
         st.progress(pct_wellness / 100)
         st.caption(f"{len(wellness_hoy_df)} / {n_total} jugadores cargados")
         if pct_wellness == 100:
-            st.success("✅ Completo")
+            st.success("Completo")
         elif pct_wellness > 0:
-            st.warning("⏳ En proceso")
+            st.warning("En proceso")
         else:
-            st.error("❌ Sin cargar")
+            st.error("Sin cargar")
 
 # --- Lesiones activas ---
 with col_c:
     with st.container(border=True):
         st.markdown(
-            f"<div style='font-size:1.1rem; font-weight:bold'>🏥 Lesiones activas</div>",
+            f"<div style='font-size:1.1rem; font-weight:bold'>Lesiones activas</div>",
             unsafe_allow_html=True,
         )
         color_les = "#FF4B4B" if n_activas > 0 else "#21C354"
@@ -349,16 +353,16 @@ with col_c:
         )
         st.caption("jugadores fuera de juego")
         if n_activas == 0:
-            st.success("✅ Plantel completo")
+            st.success("Plantel completo")
         else:
             nombres = lesiones_act_df["jugador"].tolist()[:3]
-            st.warning(f"⚠️ {', '.join(nombres)}" + (" y más..." if n_activas > 3 else ""))
+            st.warning(f"{', '.join(nombres)}" + (" y más..." if n_activas > 3 else ""))
 
 # --- Fuerza/Gym ---
 with col_d:
     with st.container(border=True):
         st.markdown(
-            f"<div style='font-size:1.1rem; font-weight:bold'>🏋️ Fuerza / Gym</div>",
+            f"<div style='font-size:1.1rem; font-weight:bold'>Fuerza / Gym</div>",
             unsafe_allow_html=True,
         )
         # Ver si hay sesiones de gym en carga_interna para hoy
@@ -371,7 +375,7 @@ with col_d:
         )
         st.caption("jugadores con sesión de gym hoy")
         if n_gym_hoy > 0:
-            st.info(f"📋 Ver detalles en **Carga Gym**")
+            st.info(f"Ver detalles en **Carga Gym**")
         else:
             st.caption("Sin sesión de gym programada")
 
@@ -383,9 +387,9 @@ st.divider()
 # ============================================================
 
 tab_carga, tab_lesiones, tab_historial = st.tabs([
-    "🏃 Carga Interna",
-    "🏥 Lesiones",
-    "📜 Historial de lesiones",
+    "Carga Interna",
+    "Lesiones",
+    "Historial de lesiones",
 ])
 
 
@@ -395,32 +399,33 @@ tab_carga, tab_lesiones, tab_historial = st.tabs([
 
 with tab_carga:
 
-    st.subheader("🏃 Carga interna diaria")
+    st.markdown('<div class="ep-badge ep-badge-performance">Performance</div>', unsafe_allow_html=True)
+    st.markdown('<div class="ep-section-title">Carga interna diaria</div>', unsafe_allow_html=True)
     st.caption(
         "Ingresá el tipo de sesión, RPE y duración en minutos para cada jugador. "
         "El training load (RPE × minutos) se calcula automáticamente."
     )
 
     # Referencia rápida de RPE
-    with st.expander("📖 Referencia RPE (1-10)"):
+    with st.expander("Referencia RPE (1-10)"):
         col_r1, col_r2, col_r3 = st.columns(3)
         with col_r1:
             st.markdown("""
             **Zona baja (1–4)**
-            - 1-2 → Muy liviano / recuperación
-            - 3-4 → Fácil, conversación fluida
+            - 1-2 Muy liviano / recuperación
+            - 3-4 Fácil, conversación fluida
             """)
         with col_r2:
             st.markdown("""
             **Zona media (5–7)**
-            - 5-6 → Moderado, algo difícil
-            - 7   → Duro pero sostenible
+            - 5-6 Moderado, algo difícil
+            - 7   Duro pero sostenible
             """)
         with col_r3:
             st.markdown("""
             **Zona alta (8–10)**
-            - 8-9 → Muy duro, cerca del límite
-            - 10  → Máximo esfuerzo posible
+            - 8-9 Muy duro, cerca del límite
+            - 10  Máximo esfuerzo posible
             """)
 
     # Construir el formulario
@@ -434,21 +439,21 @@ with tab_carga:
         "#":              st.column_config.NumberColumn("N°", disabled=True, width=45),
         "Jugador":        st.column_config.TextColumn("Jugador", disabled=True, width=180),
         "Pos.":           st.column_config.TextColumn("Pos.", disabled=True, width=55),
-        "✓":              st.column_config.TextColumn("Hoy", disabled=True, width=45),
+        "Hoy":           st.column_config.TextColumn("Hoy", disabled=True, width=45),
         "Tipo de sesión": st.column_config.SelectboxColumn(
-                              "🎯 Tipo de sesión",
+                              "Tipo de sesión",
                               options=TIPOS_SESION,
                               required=True,
                               width=145,
                           ),
         "RPE":            st.column_config.NumberColumn(
-                              "💢 RPE",
+                              "RPE",
                               min_value=0, max_value=10, step=1,
                               help="0 = descanso · 1-10 = escala de esfuerzo percibido",
                               width=70,
                           ),
         "Minutos":        st.column_config.NumberColumn(
-                              "⏱ Minutos",
+                              "Minutos",
                               min_value=0, max_value=180, step=5,
                               width=90,
                           ),
@@ -457,7 +462,7 @@ with tab_carga:
     df_editado_carga = st.data_editor(
         df_form_carga,
         column_config=config_carga,
-        column_order=["#", "Jugador", "Pos.", "✓", "Tipo de sesión", "RPE", "Minutos"],
+        column_order=["#", "Jugador", "Pos.", "Hoy", "Tipo de sesión", "RPE", "Minutos"],
         hide_index=True,
         use_container_width=True,
         num_rows="fixed",
@@ -478,23 +483,23 @@ with tab_carga:
     tl_max        = df_prev_carga["Training Load"].max()
 
     col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-    col_m1.metric("🛋 En descanso",       n_descansando)
-    col_m2.metric("⚽ En partido",         n_partido)
-    col_m3.metric("📊 TL promedio equipo", f"{tl_promedio:.0f} UA" if not pd.isna(tl_promedio) else "—")
-    col_m4.metric("🔝 TL máximo",          f"{tl_max:.0f} UA")
+    col_m1.metric("En descanso",       n_descansando)
+    col_m2.metric("En partido",         n_partido)
+    col_m3.metric("TL promedio equipo", f"{tl_promedio:.0f} UA" if not pd.isna(tl_promedio) else "—")
+    col_m4.metric("TL máximo",          f"{tl_max:.0f} UA")
 
     # Previsualización con colores de training load
     def _color_tl(val):
         if pd.isna(val) or val == 0:
             return ""
         elif val < 300:
-            return "background-color:#d4edda; color:#155724"   # verde → carga baja
+            return "background-color:#d4edda; color:#155724"   # verde carga baja
         elif val < 500:
-            return "background-color:#fff3cd; color:#856404"   # amarillo → carga media
+            return "background-color:#fff3cd; color:#856404"   # amarillo carga media
         elif val < 700:
-            return "background-color:#ffe5cc; color:#7a3c00"   # naranja → carga alta
+            return "background-color:#ffe5cc; color:#7a3c00"   # naranja carga alta
         else:
-            return "background-color:#f8d7da; color:#721c24"   # rojo → carga muy alta
+            return "background-color:#f8d7da; color:#721c24"   # rojo carga muy alta
 
     st.markdown("**Vista previa — Training Load (RPE × Minutos):**")
     cols_prev = ["#", "Jugador", "Pos.", "Tipo de sesión", "RPE", "Minutos", "Training Load"]
@@ -513,7 +518,7 @@ with tab_carga:
 
     with col_btn_c:
         guardar_carga = st.button(
-            "💾 Guardar carga interna",
+            "Guardar carga interna",
             type="primary",
             use_container_width=True,
             key="btn_guardar_carga",
@@ -521,31 +526,31 @@ with tab_carga:
 
     with col_info_c:
         st.markdown("<br>", unsafe_allow_html=True)
-        n_ya = int((df_editado_carga["✓"] == "✅").sum())
+        n_ya = int((df_editado_carga["Hoy"] == "Si").sum())
         n_tot_form = len(df_editado_carga)
         if n_ya > 0:
-            st.info(f"ℹ️ {n_ya} jugadores ya tienen datos para hoy — se sobreescribirán con los valores actuales.")
+            st.info(f"{n_ya} jugadores ya tienen datos para hoy — se sobreescribirán con los valores actuales.")
         else:
-            st.info(f"📋 Se guardarán {n_tot_form} registros para el {fecha_sel.strftime('%d/%m/%Y')}.")
+            st.info(f"Se guardarán {n_tot_form} registros para el {fecha_sel.strftime('%d/%m/%Y')}.")
 
     if guardar_carga:
         try:
             n_guardados = guardar_carga_interna(df_editado_carga, fecha_str)
             st.cache_data.clear()
             st.success(
-                f"✅ **{n_guardados} registros de carga interna guardados** "
+                f"**{n_guardados} registros de carga interna guardados** "
                 f"para el {fecha_sel.strftime('%d/%m/%Y')}. "
                 f"El Dashboard y las métricas ACWR ya se actualizaron."
             )
             tl_alto = df_prev_carga[df_prev_carga["Training Load"] >= 700]
             if not tl_alto.empty:
                 st.warning(
-                    f"⚠️ {len(tl_alto)} jugador(es) con Training Load ≥ 700 UA: "
+                    f"{len(tl_alto)} jugador(es) con Training Load ≥ 700 UA: "
                     f"{', '.join(tl_alto['Jugador'].tolist()[:4])}. Revisar carga."
                 )
             st.rerun()
         except Exception as e:
-            st.error(f"❌ Error al guardar: {e}")
+            st.error(f"Error al guardar: {e}")
 
 
 # ============================================================
@@ -558,7 +563,8 @@ with tab_lesiones:
 
     # ── NUEVA LESIÓN ─────────────────────────────────────────
     with col_les_nueva:
-        st.subheader("🆕 Registrar nueva lesión")
+        st.markdown('<div class="ep-badge ep-badge-medico">Medico</div>', unsafe_allow_html=True)
+        st.markdown('<div class="ep-section-title">Registrar nueva lesión</div>', unsafe_allow_html=True)
 
         # Opciones de jugadores sin lesión activa actualmente
         ids_lesionados = set(lesiones_act_df["jugador_id"].tolist()) if not lesiones_act_df.empty else set()
@@ -577,7 +583,7 @@ with tab_lesiones:
 
         # Aviso si el jugador ya tiene lesión activa
         if jug_les_id in ids_lesionados:
-            st.warning("⚠️ Este jugador ya tiene una lesión activa registrada.")
+            st.warning("Este jugador ya tiene una lesión activa registrada.")
 
         col_li1, col_li2 = st.columns(2)
         with col_li1:
@@ -603,12 +609,12 @@ with tab_lesiones:
             )
 
         fecha_alta_estimada = fecha_les + timedelta(days=int(dias_baja))
-        st.info(f"📅 Alta estimada: **{fecha_alta_estimada.strftime('%d/%m/%Y')}**")
+        st.info(f"Alta estimada: **{fecha_alta_estimada.strftime('%d/%m/%Y')}**")
 
         st.divider()
 
         guardar_lesion = st.button(
-            "🏥 Registrar lesión",
+            "Registrar lesión",
             type="primary",
             use_container_width=True,
             key="btn_nueva_lesion",
@@ -625,20 +631,21 @@ with tab_lesiones:
                 )
                 st.cache_data.clear()
                 st.success(
-                    f"✅ Lesión registrada: **{jug_les_nombre.split('(')[0].strip()}** — "
+                    f"Lesión registrada: **{jug_les_nombre.split('(')[0].strip()}** — "
                     f"{tipo_les} en {zona_les}. "
                     f"Baja estimada: {dias_baja} días."
                 )
                 st.rerun()
             except Exception as e:
-                st.error(f"❌ Error: {e}")
+                st.error(f"Error: {e}")
 
     # ── DAR DE ALTA ───────────────────────────────────────────
     with col_les_alta:
-        st.subheader("✅ Dar de alta")
+        st.markdown('<div class="ep-badge ep-badge-medico">Medico</div>', unsafe_allow_html=True)
+        st.markdown('<div class="ep-section-title">Dar de alta</div>', unsafe_allow_html=True)
 
         if lesiones_act_df.empty:
-            st.success("✅ No hay jugadores con lesión activa. Plantel completo.")
+            st.success("No hay jugadores con lesión activa. Plantel completo.")
         else:
             hoy_ts = pd.Timestamp(date.today())
 
@@ -651,13 +658,13 @@ with tab_lesiones:
                 # Color de la tarjeta según estado de recuperación
                 if dias_rest == 0:
                     borde = "#21C354"
-                    estado_txt = "✅ Alta médica disponible"
+                    estado_txt = "Alta médica disponible"
                 elif dias_rest <= 5:
                     borde = "#FF8C00"
-                    estado_txt = f"🔜 Regresa en {dias_rest} días"
+                    estado_txt = f"Regresa en {dias_rest} días"
                 else:
                     borde = "#FF4B4B"
-                    estado_txt = f"❌ {dias_rest} días restantes"
+                    estado_txt = f"{dias_rest} días restantes"
 
                 with st.container(border=True):
                     col_info_les, col_btn_alta = st.columns([3, 1])
@@ -670,9 +677,9 @@ with tab_lesiones:
                             unsafe_allow_html=True,
                         )
                         st.markdown(
-                            f"🏥 {str(les['tipo_lesion']).capitalize()} — {les['zona_corporal']} &nbsp;|&nbsp; "
-                            f"📅 Desde {pd.Timestamp(les['fecha_inicio']).strftime('%d/%m/%Y')} &nbsp;|&nbsp; "
-                            f"⏱ Día {dias_pasados} / {dias_baja_v}",
+                            f"{str(les['tipo_lesion']).capitalize()} — {les['zona_corporal']} &nbsp;|&nbsp; "
+                            f"Desde {pd.Timestamp(les['fecha_inicio']).strftime('%d/%m/%Y')} &nbsp;|&nbsp; "
+                            f"Día {dias_pasados} / {dias_baja_v}",
                             unsafe_allow_html=True,
                         )
                         st.progress(
@@ -683,7 +690,7 @@ with tab_lesiones:
                     with col_btn_alta:
                         st.markdown("<br>", unsafe_allow_html=True)
                         if st.button(
-                            "✅ Alta",
+                            "Alta",
                             key=f"alta_{les['jugador_id']}_{les['fecha_inicio']}",
                             use_container_width=True,
                             type="primary" if dias_rest == 0 else "secondary",
@@ -691,7 +698,7 @@ with tab_lesiones:
                             dar_alta_lesion(int(les["id"]), str(date.today()))
                             st.cache_data.clear()
                             st.success(
-                                f"✅ **{les['jugador']}** dado de alta el "
+                                f"**{les['jugador']}** dado de alta el "
                                 f"{date.today().strftime('%d/%m/%Y')}."
                             )
                             st.rerun()
@@ -703,7 +710,8 @@ with tab_lesiones:
 
 with tab_historial:
 
-    st.subheader("📜 Historial completo de lesiones")
+    st.markdown('<div class="ep-badge ep-badge-medico">Medico</div>', unsafe_allow_html=True)
+    st.markdown('<div class="ep-section-title">Historial completo de lesiones</div>', unsafe_allow_html=True)
 
     if lesiones_all_df.empty:
         st.info("Sin lesiones registradas.")
@@ -750,7 +758,7 @@ with tab_historial:
             "fecha_inicio", "fecha_fin", "dias_baja", "activo"
         ]].copy()
 
-        df_mostrar["activo"] = df_mostrar["activo"].map({1: "🔴 Activa", 0: "✅ Resuelta"})
+        df_mostrar["activo"] = df_mostrar["activo"].map({1: "Activa", 0: "Resuelta"})
         df_mostrar = df_mostrar.rename(columns={
             "jugador":      "Jugador",
             "posicion":     "Posición",
@@ -784,7 +792,7 @@ with tab_historial:
 
 st.divider()
 st.caption(
-    f"📋 Front Desk · EQUIPOPHYSICAL · "
+    f"Front Desk · EQUIPOPHYSICAL · "
     f"Datos al {fecha_sel.strftime('%d/%m/%Y')} · "
     f"Carga interna: {pct_carga}% · Wellness: {pct_wellness}% · "
     f"Lesiones activas: {n_activas}"

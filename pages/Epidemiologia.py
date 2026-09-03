@@ -20,9 +20,10 @@ import sqlite3
 import sys
 import os
 
-# Permite importar auth.py, que está un directorio arriba (raíz del proyecto)
+# Permite importar auth.py y styles.py, que están un directorio arriba (raíz del proyecto)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import auth
+from styles import apply_styles
 
 # ── Tema visual EQUIPOPHYSICAL ─────────────────────────────────
 _EP_FONT = "'Inter', 'Segoe UI', sans-serif"
@@ -47,10 +48,12 @@ _EP_ANIM = {
 
 st.set_page_config(
     page_title="Epidemiología",
-    page_icon="📊",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+apply_styles()
 
 auth.exigir_acceso("Epidemiologia")
 
@@ -248,8 +251,8 @@ def calcular_metricas(lesiones_df, exposicion_df):
 # ============================================================
 
 with st.sidebar:
-    st.header("📊 Epidemiología")
-    if st.button("🔄 Actualizar datos", width='stretch'):
+    st.header("Epidemiología")
+    if st.button("Actualizar datos", width='stretch'):
         st.cache_data.clear()
         st.rerun()
     st.divider()
@@ -275,7 +278,7 @@ m             = calcular_metricas(lesiones_df, exposicion_df)
 # HEADER
 # ============================================================
 
-st.title("📊 Epidemiología de Lesiones")
+st.title("Epidemiología de Lesiones")
 st.caption(
     "Estándar IOC Consensus Statement · Fuller et al., 2006 · "
     "Métricas por 1000 horas-atleta (HA) de exposición"
@@ -287,14 +290,15 @@ st.divider()
 # SECCIÓN 1: MÉTRICAS PRINCIPALES
 # ============================================================
 
-st.subheader("📌 Indicadores Epidemiológicos Principales")
+st.markdown('<div class="ep-badge ep-badge-medico">Medico</div>', unsafe_allow_html=True)
+st.markdown('<div class="ep-section-title">Indicadores Epidemiológicos Principales</div>', unsafe_allow_html=True)
 
 # Fila 1: Totales
 r1c1, r1c2, r1c3, r1c4 = st.columns(4)
-r1c1.metric("🩹 Total lesiones",       m["n_total"])
-r1c2.metric("📅 Días de baja totales", m["dias_baja_total"])
-r1c3.metric("⏱️ Horas-atleta totales", f"{m['ha_total']:,.0f} HA")
-r1c4.metric("📏 Severidad media",      f"{m['severidad_media']}")
+r1c1.metric("Total lesiones",       m["n_total"])
+r1c2.metric("Días de baja totales", m["dias_baja_total"])
+r1c3.metric("Horas-atleta totales", f"{m['ha_total']:,.0f} HA")
+r1c4.metric("Severidad media",      f"{m['severidad_media']}")
 r1c4.caption("días de baja por lesión")
 
 st.markdown(" ")
@@ -303,28 +307,28 @@ st.markdown(" ")
 r2c1, r2c2, r2c3, r2c4 = st.columns(4)
 
 r2c1.metric(
-    "📊 Incidencia total",
+    "Incidencia total",
     f"{m['inc_total']}",
     help="(N lesiones / Horas-atleta totales) × 1000 — Estándar IOC",
 )
 r2c1.caption("lesiones / 1000 horas-atleta")
 
 r2c2.metric(
-    "⚽ Incidencia en partido",
+    "Incidencia en partido",
     f"{m['inc_partido']}",
     help="Solo horas de exposición en partidos",
 )
 r2c2.caption("lesiones / 1000 horas-atleta")
 
 r2c3.metric(
-    "🏃 Incidencia en entreno",
+    "Incidencia en entreno",
     f"{m['inc_entreno']}",
     help="Solo horas de exposición en entrenamiento",
 )
 r2c3.caption("lesiones / 1000 horas-atleta")
 
 r2c4.metric(
-    "⚖️ Carga lesional",
+    "Carga lesional",
     f"{m['carga_lesional']}",
     help="Incidencia × Severidad media · días de baja perdidos por cada 1000 HA",
 )
@@ -334,17 +338,17 @@ st.markdown(" ")
 
 # Fila 3: Contexto y re-lesión
 r3c1, r3c2, r3c3, r3c4 = st.columns(4)
-r3c1.metric("🏟️ Lesiones en partido",      m["n_partido"])
-r3c2.metric("🏋️ Lesiones en entrenamiento", m["n_entreno"])
-r3c3.metric("🔁 Re-lesiones",              m["n_relesiones"])
+r3c1.metric("Lesiones en partido",      m["n_partido"])
+r3c2.metric("Lesiones en entrenamiento", m["n_entreno"])
+r3c3.metric("Re-lesiones",              m["n_relesiones"])
 r3c4.metric(
-    "🔁 Tasa de re-lesión",
+    "Tasa de re-lesión",
     f"{m['tasa_relesion']} %",
     help="Lesiones en zona previamente lesionada del mismo jugador",
 )
 
 # Referencia de valores UEFA
-with st.expander("ℹ️ Valores de referencia UEFA / FIFA"):
+with st.expander("Valores de referencia UEFA / FIFA"):
     st.markdown("""
     | Indicador | Referencia UEFA (élite) | Tu plantel |
     |---|---|---|
@@ -369,7 +373,8 @@ st.divider()
 # SECCIÓN 2: LESIONES POR ZONA CORPORAL Y TIPO (STACKED BAR)
 # ============================================================
 
-st.subheader("🦴 Distribución por Zona Corporal y Tipo de Lesión")
+st.markdown('<div class="ep-badge ep-badge-medico">Medico</div>', unsafe_allow_html=True)
+st.markdown('<div class="ep-section-title">Distribución por Zona Corporal y Tipo de Lesión</div>', unsafe_allow_html=True)
 
 col_zona, col_tipo = st.columns([3, 2])
 
@@ -490,7 +495,8 @@ st.divider()
 # SECCIÓN 3: EVOLUCIÓN TEMPORAL DE LESIONES POR MES
 # ============================================================
 
-st.subheader("📅 Evolución Temporal de Lesiones")
+st.markdown('<div class="ep-badge ep-badge-medico">Medico</div>', unsafe_allow_html=True)
+st.markdown('<div class="ep-section-title">Evolución Temporal de Lesiones</div>', unsafe_allow_html=True)
 
 # Agregar columna de mes
 lesiones_df["mes"] = (
@@ -574,13 +580,13 @@ st_echarts(options=option_tiempo, height="400px")
 # Mini-métricas del gráfico
 c1, c2, c3 = st.columns(3)
 mes_pico = por_mes_total.loc[por_mes_total["n_lesiones"].idxmax()]
-c1.metric("📈 Mes con más lesiones",
+c1.metric("Mes con más lesiones",
           mes_pico["mes"].strftime("%B %Y"),
           f"{int(mes_pico['n_lesiones'])} lesiones")
-c2.metric("⚽ Ratio partido/entreno",
+c2.metric("Ratio partido/entreno",
           f"{m['n_partido']} / {m['n_entreno']}",
           f"Partido: {m['inc_partido']} vs Entreno: {m['inc_entreno']} /1000HA")
-c3.metric("📉 Promedio mensual",
+c3.metric("Promedio mensual",
           f"{por_mes_total['n_lesiones'].mean():.1f} lesiones/mes")
 
 st.divider()
@@ -590,7 +596,8 @@ st.divider()
 # SECCIÓN 4: TABLA COMPLETA DE LESIONES
 # ============================================================
 
-st.subheader("📋 Registro Completo de Lesiones")
+st.markdown('<div class="ep-badge ep-badge-medico">Medico</div>', unsafe_allow_html=True)
+st.markdown('<div class="ep-section-title">Registro Completo de Lesiones</div>', unsafe_allow_html=True)
 
 # Preparar tabla para mostrar
 tabla = lesiones_df[[
@@ -604,7 +611,7 @@ tabla["fecha_inicio"] = tabla["fecha_inicio"].dt.strftime("%d/%m/%Y")
 tabla["fecha_fin"]    = tabla["fecha_fin"].apply(
     lambda x: x.strftime("%d/%m/%Y") if pd.notna(x) else "En baja"
 )
-tabla["activo"] = tabla["activo"].map({1: "🤕 En baja", 0: "✅ Recuperado"})
+tabla["activo"] = tabla["activo"].map({1: "En baja", 0: "Recuperado"})
 
 tabla = tabla.rename(columns={
     "numero":       "#",
@@ -621,7 +628,7 @@ tabla = tabla.rename(columns={
 
 # Colorear filas según estado
 def _color_estado_fila(row):
-    if row["Estado"] == "🤕 En baja":
+    if row["Estado"] == "En baja":
         return ["background-color:#fff0f0"] * len(row)
     else:
         return ["background-color:#f0fff4"] * len(row)
@@ -645,13 +652,14 @@ st.divider()
 
 # ============================================================
 # SECCIÓN 5: RECORRIDO DE LESIONES (SANKEY)
-# Flujo: Lesión → Tipo → Zona corporal → Decisión RTP → Disponibilidad
+# Flujo: Lesión Tipo Zona corporal Decisión RTP Disponibilidad
 # ============================================================
 
-st.subheader("🔀 Recorrido de las Lesiones")
+st.markdown('<div class="ep-badge ep-badge-medico">Medico</div>', unsafe_allow_html=True)
+st.markdown('<div class="ep-section-title">Recorrido de las Lesiones</div>', unsafe_allow_html=True)
 st.caption(
-    "Cada lesión fluye de izquierda a derecha: tipo de lesión → zona corporal → "
-    "última decisión RTP registrada → estado de disponibilidad actual."
+    "Cada lesión fluye de izquierda a derecha: tipo de lesión zona corporal "
+    "última decisión RTP registrada estado de disponibilidad actual."
 )
 
 decisiones_rtp = cargar_decisiones_rtp()
@@ -674,8 +682,8 @@ ETIQUETAS_DECISION = {
 flujo["rtp_label"] = flujo["decision"].map(ETIQUETAS_DECISION).fillna("RTP: Sin evaluar")
 flujo["tipo_label"] = "Tipo: " + flujo["tipo_lesion"].astype(str)
 flujo["zona_label"] = "Zona: " + flujo["zona_corporal"].astype(str)
-flujo["disponible_label"] = flujo["activo"].map({0: "✅ Disponible", 1: "🤕 No disponible"})
-flujo["raiz"] = "🩹 Lesiones"
+flujo["disponible_label"] = flujo["activo"].map({0: "Disponible", 1: "No disponible"})
+flujo["raiz"] = "Lesiones"
 
 
 def _contar_enlaces(df, columna_origen, columna_destino):
@@ -697,7 +705,7 @@ enlaces_sankey = pd.concat([
 
 
 def _color_nodo_sankey(nombre):
-    if nombre == "🩹 Lesiones":
+    if nombre == "Lesiones":
         return "#3D3D3D"
     if nombre.startswith("Tipo: "):
         return "#F47920"
@@ -711,9 +719,9 @@ def _color_nodo_sankey(nombre):
         return "#d63031"
     if nombre == "RTP: Sin evaluar":
         return "#999999"
-    if nombre == "✅ Disponible":
+    if nombre == "Disponible":
         return "#1a9e5c"
-    if nombre == "🤕 No disponible":
+    if nombre == "No disponible":
         return "#d63031"
     return "#cccccc"
 
@@ -736,7 +744,7 @@ option_sankey = {
         "formatter": JsCode("""
 function (p) {
     if (p.dataType === 'edge') {
-        return p.data.source + ' → ' + p.data.target + '<br/><b>' + p.data.value + '</b> lesión(es)';
+        return p.data.source + ' ' + p.data.target + '<br/><b>' + p.data.value + '</b> lesión(es)';
     }
     return '<b>' + p.name + '</b>';
 }
@@ -759,7 +767,7 @@ st_echarts(options=option_sankey, height="500px")
 
 if decisiones_rtp.empty:
     st.info(
-        "ℹ️ Todavía no hay evaluaciones cargadas en el módulo RTP — por eso "
+        "Todavía no hay evaluaciones cargadas en el módulo RTP — por eso "
         "todas las lesiones aparecen como **'RTP: Sin evaluar'**. Ese tramo se "
         "va completando a medida que los fisios cargan evaluaciones en RTP."
     )

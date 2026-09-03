@@ -10,12 +10,12 @@ Flujo de trabajo:
   4. Presiona "Guardar" — los datos aparecen inmediatamente en el Dashboard
 
 Escala 1-5 para todos los ítems:
-  Fatiga        → 1 = sin fatiga,   5 = muy fatigado   (más alto = peor)
-  Calidad sueño → 1 = muy malo,     5 = excelente      (más alto = mejor)
-  Horas sueño   → 1 = < 5 horas,   5 = > 9 horas      (más alto = mejor)
-  Dolor musc.   → 1 = sin dolor,    5 = dolor severo   (más alto = peor)
-  Humor         → 1 = muy malo,     5 = excelente      (más alto = mejor)
-  Estrés        → 1 = muy bajo,     5 = muy alto       (más alto = peor)
+  Fatiga        1 = sin fatiga,   5 = muy fatigado   (más alto = peor)
+  Calidad sueño 1 = muy malo,     5 = excelente      (más alto = mejor)
+  Horas sueño   1 = < 5 horas,   5 = > 9 horas      (más alto = mejor)
+  Dolor musc.   1 = sin dolor,    5 = dolor severo   (más alto = peor)
+  Humor         1 = muy malo,     5 = excelente      (más alto = mejor)
+  Estrés        1 = muy bajo,     5 = muy alto       (más alto = peor)
 
 Escala 1-10 para TQR (Total Quality Recovery):
   1-3  = Poco recuperado  (rojo)
@@ -36,14 +36,17 @@ from datetime import date, timedelta
 
 st.set_page_config(
     page_title="Wellness Diario",
-    page_icon="📝",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Permite importar auth.py, que está un directorio arriba (raíz del proyecto)
+# Permite importar auth.py y styles.py, que están un directorio arriba (raíz del proyecto)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import auth
+from styles import apply_styles
+
+apply_styles()
 
 auth.exigir_acceso("Wellness_Diario")
 
@@ -132,7 +135,7 @@ def guardar_wellness(filas, fecha_str):
         estres         = int(row["Estrés"])
         tqr            = int(row["TQR"])
 
-        # wellness_total: invierte los ítems negativos → más alto = mejor bienestar
+        # wellness_total: invierte los ítems negativos más alto = mejor bienestar
         # (el TQR es un ítem independiente, no entra en este promedio)
         wellness_total = round(
             (
@@ -174,9 +177,9 @@ def construir_formulario(jugadores_df, wellness_hoy_df, wellness_ayer_df, filtro
     Arma el DataFrame que se muestra en el editor.
 
     Lógica de pre-relleno:
-      1. Si el jugador ya tiene datos hoy → usa esos datos (edición)
-      2. Si tiene datos de ayer → los usa como punto de partida
-      3. Si no hay datos anteriores → valor por defecto = 3
+      1. Si el jugador ya tiene datos hoy usa esos datos (edición)
+      2. Si tiene datos de ayer los usa como punto de partida
+      3. Si no hay datos anteriores valor por defecto = 3
          (el TQR usa 5 como valor por defecto: punto medio de su escala 1-10)
     """
     DEFECTO = 3
@@ -210,14 +213,14 @@ def construir_formulario(jugadores_df, wellness_hoy_df, wellness_ayer_df, filtro
             "#":            int(jug["numero"]),
             "Jugador":      jug["jugador"],
             "Pos.":         jug["posicion"][:3].upper(),
-            "✓":            "✅" if ya_guardado else "⬜",
+            "Hoy":          "Si" if ya_guardado else "No",
             "Fatiga":       int(src.get("fatiga",         DEFECTO)),
             "Sueño calidad":int(src.get("calidad_sueno",  DEFECTO)),
             "Sueño horas":  int(src.get("horas_sueno",    DEFECTO)),
             "Dolor musc.":  int(src.get("dolor_muscular", DEFECTO)),
             "Humor":        int(src.get("humor",           DEFECTO)),
             "Estrés":       int(src.get("estres",          DEFECTO)),
-            # tqr es nullable en la BD (columna agregada después) → si es
+            # tqr es nullable en la BD (columna agregada después) si es
             # None a pesar de estar la clave presente, usamos el defecto
             "TQR":          int(src.get("tqr") if src.get("tqr") is not None else DEFECTO_TQR),
         })
@@ -269,11 +272,11 @@ def color_tqr(val):
 # ============================================================
 
 with st.sidebar:
-    st.header("📝 Wellness Diario")
+    st.header("Wellness Diario")
     st.divider()
 
     # Selector de fecha (por defecto hoy)
-    fecha_sel = st.date_input("📅 Fecha de carga", value=date.today())
+    fecha_sel = st.date_input("Fecha de carga", value=date.today())
 
     st.divider()
 
@@ -286,7 +289,7 @@ with st.sidebar:
 
     st.divider()
     st.caption(
-        "💡 **Tip rápido:** Los valores se pre-cargan con los datos de ayer. "
+        "**Tip rápido:** Los valores se pre-cargan con los datos de ayer. "
         "Solo modificá lo que cambió."
     )
     st.divider()
@@ -315,21 +318,21 @@ pct_completado  = round(n_completados / n_total * 100) if n_total > 0 else 0
 
 col_tit, col_estado = st.columns([4, 2])
 with col_tit:
-    st.title("📝 Carga Diaria de Wellness")
+    st.title("Carga Diaria de Wellness")
     st.caption(f"Fecha: **{fecha_sel.strftime('%A %d de %B de %Y').capitalize()}**")
     if SOLO_LECTURA:
-        st.info("👁️ **Modo solo lectura** — tu rol puede ver los datos pero no cargarlos.")
+        st.info("**Modo solo lectura** — tu rol puede ver los datos pero no cargarlos.")
 
 with col_estado:
     # Barra de progreso del día
     st.markdown("<br>", unsafe_allow_html=True)
     if n_completados == n_total:
-        st.success(f"✅ Plantel completo cargado ({n_total}/{n_total})")
+        st.success(f"Plantel completo cargado ({n_total}/{n_total})")
     elif n_completados > 0:
-        st.warning(f"⏳ {n_completados} / {n_total} jugadores cargados hoy")
+        st.warning(f"{n_completados} / {n_total} jugadores cargados hoy")
         st.progress(pct_completado / 100)
     else:
-        st.info(f"📋 Sin datos para hoy — se pre-cargan valores de ayer")
+        st.info(f"Sin datos para hoy — se pre-cargan valores de ayer")
         st.progress(0.0)
 
 
@@ -337,50 +340,50 @@ with col_estado:
 # REFERENCIA DE ESCALA (expandible para no ocupar espacio)
 # ============================================================
 
-with st.expander("📖 Referencia de escalas"):
+with st.expander("Referencia de escalas"):
     col_a, col_b, col_c, col_d = st.columns(4)
     with col_a:
         st.markdown("""
-        **😴 Fatiga** *(más alto = peor)*
+        **Fatiga** *(más alto = peor)*
         - 1 = Sin fatiga
         - 3 = Fatiga moderada
         - 5 = Muy fatigado
 
-        **💪 Dolor muscular** *(más alto = peor)*
+        **Dolor muscular** *(más alto = peor)*
         - 1 = Sin dolor
         - 3 = Dolor moderado
         - 5 = Dolor severo
         """)
     with col_b:
         st.markdown("""
-        **🌙 Calidad de sueño** *(más alto = mejor)*
+        **Calidad de sueño** *(más alto = mejor)*
         - 1 = Muy mala
         - 3 = Normal
         - 5 = Excelente
 
-        **⏰ Horas de sueño** *(más alto = mejor)*
+        **Horas de sueño** *(más alto = mejor)*
         - 1 = < 5 horas
         - 3 = 6–7 horas
         - 5 = > 9 horas
         """)
     with col_c:
         st.markdown("""
-        **😊 Humor** *(más alto = mejor)*
+        **Humor** *(más alto = mejor)*
         - 1 = Muy malo
         - 3 = Normal
         - 5 = Excelente
 
-        **🧠 Estrés** *(más alto = peor)*
+        **Estrés** *(más alto = peor)*
         - 1 = Sin estrés
         - 3 = Estrés moderado
         - 5 = Muy estresado
         """)
     with col_d:
         st.markdown("""
-        **🔋 TQR** *(Total Quality Recovery, escala 1-10)*
-        - 🔴 1-3 = Poco recuperado
-        - 🟠 4-6 = Moderado
-        - 🟢 7-10 = Bien recuperado
+        **TQR** *(Total Quality Recovery, escala 1-10)*
+        - 1-3 = Poco recuperado
+        - 4-6 = Moderado
+        - 7-10 = Bien recuperado
         """)
 
 st.divider()
@@ -400,33 +403,33 @@ column_config = {
     "#":             st.column_config.NumberColumn("N°", disabled=True, width=40),
     "Jugador":       st.column_config.TextColumn("Jugador", disabled=True, width=180),
     "Pos.":          st.column_config.TextColumn("Pos.", disabled=True, width=50),
-    "✓":             st.column_config.TextColumn("Hoy", disabled=True, width=40),
+    "Hoy":          st.column_config.TextColumn("Hoy", disabled=True, width=40),
     "Fatiga":        st.column_config.NumberColumn(
-                         "😴 Fatiga", min_value=1, max_value=5, step=1,
+                         "Fatiga", min_value=1, max_value=5, step=1,
                          help="1=sin fatiga · 5=muy fatigado  (más alto = peor)",
                          width=80),
     "Sueño calidad": st.column_config.NumberColumn(
-                         "🌙 Sueño cal.", min_value=1, max_value=5, step=1,
+                         "Sueño cal.", min_value=1, max_value=5, step=1,
                          help="1=muy malo · 5=excelente",
                          width=100),
     "Sueño horas":   st.column_config.NumberColumn(
-                         "⏰ Sueño hs.", min_value=1, max_value=5, step=1,
+                         "Sueño hs.", min_value=1, max_value=5, step=1,
                          help="1=<5h · 3=6-7h · 5=>9h",
                          width=100),
     "Dolor musc.":   st.column_config.NumberColumn(
-                         "💪 Dolor", min_value=1, max_value=5, step=1,
+                         "Dolor", min_value=1, max_value=5, step=1,
                          help="1=sin dolor · 5=dolor severo  (más alto = peor)",
                          width=80),
     "Humor":         st.column_config.NumberColumn(
-                         "😊 Humor", min_value=1, max_value=5, step=1,
+                         "Humor", min_value=1, max_value=5, step=1,
                          help="1=muy malo · 5=excelente",
                          width=80),
     "Estrés":        st.column_config.NumberColumn(
-                         "🧠 Estrés", min_value=1, max_value=5, step=1,
+                         "Estrés", min_value=1, max_value=5, step=1,
                          help="1=sin estrés · 5=muy estresado  (más alto = peor)",
                          width=80),
     "TQR":           st.column_config.NumberColumn(
-                         "🔋 TQR", min_value=1, max_value=10, step=1,
+                         "TQR", min_value=1, max_value=10, step=1,
                          help="Total Quality Recovery — 1=sin recuperación · 10=recuperación máxima  "
                               "(1-3 poco recuperado · 4-6 moderado · 7-10 bien recuperado)",
                          width=80),
@@ -436,7 +439,7 @@ column_config = {
 df_editado = st.data_editor(
     df_form,
     column_config=column_config,
-    column_order=["#", "Jugador", "Pos.", "✓",
+    column_order=["#", "Jugador", "Pos.", "Hoy",
                   "Fatiga", "Sueño calidad", "Sueño horas",
                   "Dolor musc.", "Humor", "Estrés", "TQR"],
     hide_index=True,
@@ -478,7 +481,7 @@ col_btn, col_info = st.columns([1, 3])
 
 with col_btn:
     guardar = st.button(
-        "💾 Guardar wellness",
+        "Guardar wellness",
         type="primary",
         use_container_width=True,
         disabled=SOLO_LECTURA,
@@ -490,12 +493,12 @@ with col_info:
 
     if alertas_bajas > 0:
         st.warning(
-            f"⚠️ {alertas_bajas} jugador(es) con Wellness < 2.8 — "
+            f"{alertas_bajas} jugador(es) con Wellness < 2.8 — "
             f"revisar antes de guardar"
         )
     else:
         st.info(
-            f"📋 Guardando {n_en_form} jugadores para el {fecha_sel.strftime('%d/%m/%Y')}. "
+            f"Guardando {n_en_form} jugadores para el {fecha_sel.strftime('%d/%m/%Y')}. "
             f"Los datos actualizarán el Dashboard inmediatamente."
         )
 
@@ -520,7 +523,7 @@ if guardar:
 
         if fuera_de_rango:
             st.error(
-                f"❌ Valores fuera de rango en: {', '.join(fuera_de_rango[:5])}. "
+                f"Valores fuera de rango en: {', '.join(fuera_de_rango[:5])}. "
                 f"Corregí antes de guardar (escala 1-5, TQR 1-10)."
             )
         else:
@@ -530,7 +533,7 @@ if guardar:
             st.cache_data.clear()
 
             st.success(
-                f"✅ **{n_guardados} registros guardados correctamente** para el "
+                f"**{n_guardados} registros guardados correctamente** para el "
                 f"{fecha_sel.strftime('%d/%m/%Y')}. "
                 f"El Dashboard ya refleja los nuevos datos."
             )
@@ -542,15 +545,15 @@ if guardar:
 
             if rojos + naranjas > 0:
                 st.warning(
-                    f"🔴 {rojos} jugador(es) con Wellness crítico (<2.0)   "
-                    f"🟠 {naranjas} jugador(es) con Wellness bajo (2.0–2.8)"
+                    f"{rojos} jugador(es) con Wellness crítico (<2.0)   "
+                    f"{naranjas} jugador(es) con Wellness bajo (2.0–2.8)"
                 )
 
-            # Forzar recarga para reflejar el estado actualizado (✅ en columna Hoy)
+            # Forzar recarga para reflejar el estado actualizado (en columna Hoy)
             st.rerun()
 
     except Exception as e:
-        st.error(f"❌ Error al guardar: {e}")
+        st.error(f"Error al guardar: {e}")
 
 
 # ============================================================
@@ -559,26 +562,27 @@ if guardar:
 
 if n_completados > 0:
     st.divider()
-    st.subheader("📊 Resumen del día")
+    st.markdown('<div class="ep-badge ep-badge-medico">Medico</div>', unsafe_allow_html=True)
+    st.markdown('<div class="ep-section-title">Resumen del día</div>', unsafe_allow_html=True)
 
     wellness_hoy_df_fresh = cargar_wellness_fecha(fecha_str)
 
     col_res1, col_res2, col_res3, col_res4 = st.columns(4)
 
     col_res1.metric(
-        "📋 Jugadores cargados",
+        "Jugadores cargados",
         f"{n_completados} / {n_total}"
     )
     col_res2.metric(
-        "💚 Wellness promedio",
+        "Wellness promedio",
         f"{wellness_hoy_df_fresh['wellness_total'].mean():.2f}"
     )
     col_res3.metric(
-        "🔴 Wellness crítico (<2.0)",
+        "Wellness crítico (<2.0)",
         int((wellness_hoy_df_fresh["wellness_total"] < 2.0).sum())
     )
     col_res4.metric(
-        "🟠 Wellness bajo (2.0–2.8)",
+        "Wellness bajo (2.0–2.8)",
         int(
             ((wellness_hoy_df_fresh["wellness_total"] >= 2.0) &
              (wellness_hoy_df_fresh["wellness_total"] < 2.8)).sum()

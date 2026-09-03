@@ -21,9 +21,10 @@ import os
 from streamlit_echarts import st_echarts, JsCode
 from sklearn.ensemble import RandomForestClassifier
 
-# Permite importar auth.py, que está un directorio arriba (raíz del proyecto)
+# Permite importar auth.py y styles.py, que están un directorio arriba (raíz del proyecto)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import auth
+from styles import apply_styles
 
 # ── Tema visual EQUIPOPHYSICAL ─────────────────────────────────
 _EP_FONT = "'Inter', 'Segoe UI', sans-serif"
@@ -43,9 +44,11 @@ from sklearn.metrics import roc_auc_score
 
 st.set_page_config(
     page_title="Riesgo de Lesión — ML",
-    page_icon="🔬",
+    page_icon="",
     layout="wide",
 )
+
+apply_styles()
 
 auth.exigir_acceso("ML_Riesgo")
 
@@ -483,7 +486,7 @@ def _grafico_importancias(modelo):
 
 
 def _grafico_heatmap(riesgo_df, jugadores_df):
-    """ECharts heatmap jugadores × días → nivel de riesgo (%)."""
+    """ECharts heatmap jugadores × días nivel de riesgo (%)."""
     df = riesgo_df.merge(jugadores_df[["id", "nombre"]], left_on="jugador_id", right_on="id")
     df["dia"] = df["fecha"].dt.strftime("%d/%m")
 
@@ -554,7 +557,7 @@ def _grafico_heatmap(riesgo_df, jugadores_df):
 # ── PÁGINA PRINCIPAL ──────────────────────────────────────────
 
 def main():
-    st.title("🔬 Predicción de Riesgo de Lesión — ML")
+    st.title("Predicción de Riesgo de Lesión — ML")
     st.caption("Modelo: Random Forest · Basado en Rebelo et al. (2026) y Gabbett (2016)")
 
     # ── Carga de datos ────────────────────────────────────────
@@ -599,7 +602,7 @@ def main():
 
     # ── TABS ─────────────────────────────────────────────────
     tab_jugador, tab_equipo, tab_modelo = st.tabs(
-        ["👤 Por jugador", "👥 Vista equipo", "🧠 Modelo y validación"]
+        ["Por jugador", "Vista equipo", "Modelo y validación"]
     )
 
     # ────────────────────────────────────────────────────────
@@ -628,7 +631,7 @@ def main():
             if len(x_jug) > 0:
                 for i, f in enumerate(_top_factores(modelo, x_jug[0], X_media, X_std), 1):
                     dif   = f["valor"] - f["media"]
-                    signo = "↑" if dif > 0 else "↓"
+                    signo = "+" if dif > 0 else "-"
                     color = "#8b0000" if dif > 0 else "#1a7a3a"
                     st.markdown(
                         f"**{i}. {f['nombre']}**  \n"
@@ -660,7 +663,8 @@ def main():
     # TAB 2 — VISTA EQUIPO
     # ────────────────────────────────────────────────────────
     with tab_equipo:
-        st.markdown("#### Ranking de riesgo del plantel")
+        st.markdown('<div class="ep-badge ep-badge-medico">Medico</div>', unsafe_allow_html=True)
+        st.markdown('<div class="ep-section-title">Ranking de riesgo del plantel</div>', unsafe_allow_html=True)
 
         def _estilo_riesgo(v):
             if v >= 25:
@@ -680,7 +684,8 @@ def main():
         )
 
         st.divider()
-        st.markdown("#### Heatmap de riesgo — últimos 7 días")
+        st.markdown('<div class="ep-badge ep-badge-medico">Medico</div>', unsafe_allow_html=True)
+        st.markdown('<div class="ep-section-title">Heatmap de riesgo — últimos 7 días</div>', unsafe_allow_html=True)
 
         ventana_7d = features_df[
             features_df["fecha"] >= max_fecha - pd.Timedelta(days=6)
@@ -696,7 +701,8 @@ def main():
     # TAB 3 — MODELO Y VALIDACIÓN
     # ────────────────────────────────────────────────────────
     with tab_modelo:
-        st.markdown("#### Validación temporal — TimeSeriesSplit")
+        st.markdown('<div class="ep-badge ep-badge-medico">Medico</div>', unsafe_allow_html=True)
+        st.markdown('<div class="ep-section-title">Validación temporal — TimeSeriesSplit</div>', unsafe_allow_html=True)
 
         col_auc, col_conf = st.columns([1, 2])
 
@@ -725,7 +731,7 @@ def main():
                     """,
                     unsafe_allow_html=True,
                 )
-                st.caption("AUC = 1.0 → perfecto · AUC = 0.5 → azar")
+                st.caption("AUC = 1.0 perfecto · AUC = 0.5 azar")
             else:
                 st.warning("Sin suficientes lesiones para calcular AUC válido.")
 
@@ -746,12 +752,13 @@ def main():
             """)
 
         st.divider()
-        st.markdown("#### Importancia de features")
+        st.markdown('<div class="ep-badge ep-badge-medico">Medico</div>', unsafe_allow_html=True)
+        st.markdown('<div class="ep-section-title">Importancia de features</div>', unsafe_allow_html=True)
         st_echarts(options=_grafico_importancias(modelo), height="290px")
 
         st.divider()
         st.warning(
-            "⚠️ **Aviso clínico**  \n"
+            "**Aviso clínico**  \n"
             "Este módulo es una herramienta de **apoyo a la decisión** basada en datos "
             "de carga y wellness. **No reemplaza el juicio clínico** del médico ni del "
             "fisioterapeuta.  \n"
