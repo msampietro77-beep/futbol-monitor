@@ -294,7 +294,8 @@ r1c1, r1c2, r1c3, r1c4 = st.columns(4)
 r1c1.metric("🩹 Total lesiones",       m["n_total"])
 r1c2.metric("📅 Días de baja totales", m["dias_baja_total"])
 r1c3.metric("⏱️ Horas-atleta totales", f"{m['ha_total']:,.0f} HA")
-r1c4.metric("📏 Severidad media",      f"{m['severidad_media']} días/lesión")
+r1c4.metric("📏 Severidad media",      f"{m['severidad_media']}")
+r1c4.caption("días de baja por lesión")
 
 st.markdown(" ")
 
@@ -303,24 +304,31 @@ r2c1, r2c2, r2c3, r2c4 = st.columns(4)
 
 r2c1.metric(
     "📊 Incidencia total",
-    f"{m['inc_total']} / 1000 HA",
+    f"{m['inc_total']}",
     help="(N lesiones / Horas-atleta totales) × 1000 — Estándar IOC",
 )
+r2c1.caption("lesiones / 1000 horas-atleta")
+
 r2c2.metric(
     "⚽ Incidencia en partido",
-    f"{m['inc_partido']} / 1000 HA",
+    f"{m['inc_partido']}",
     help="Solo horas de exposición en partidos",
 )
+r2c2.caption("lesiones / 1000 horas-atleta")
+
 r2c3.metric(
     "🏃 Incidencia en entreno",
-    f"{m['inc_entreno']} / 1000 HA",
+    f"{m['inc_entreno']}",
     help="Solo horas de exposición en entrenamiento",
 )
+r2c3.caption("lesiones / 1000 horas-atleta")
+
 r2c4.metric(
     "⚖️ Carga lesional",
-    f"{m['carga_lesional']} días / 1000 HA",
+    f"{m['carga_lesional']}",
     help="Incidencia × Severidad media · días de baja perdidos por cada 1000 HA",
 )
+r2c4.caption("días de baja / 1000 horas-atleta")
 
 st.markdown(" ")
 
