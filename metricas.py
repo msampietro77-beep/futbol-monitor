@@ -43,6 +43,13 @@ WELLNESS_AMARILLO = 3.0  # 2.5–3.0 → moderado
 # Caída de wellness respecto al baseline personal
 WELLNESS_CAIDA_NARANJA = -1.0  # cayó ≥ 1.0 punto vs su promedio de 28 días
 
+# RPE:TQR — cruce de esfuerzo percibido de la sesión (RPE, 1-10) vs
+# recuperación percibida del día (TQR, 1-10)
+RPE_TQR_NARANJA_RPE = 7   # RPE > 7  y TQR < 5 → alerta naranja
+RPE_TQR_NARANJA_TQR = 5
+RPE_TQR_ROJA_RPE    = 8   # RPE > 8  y TQR < 4 → alerta roja
+RPE_TQR_ROJA_TQR    = 4
+
 
 # ============================================================
 # CARGA DE DATOS DESDE LA BASE DE DATOS
@@ -93,7 +100,8 @@ def cargar_wellness():
             w.dolor_muscular,
             w.humor,
             w.estres,
-            w.wellness_total
+            w.wellness_total,
+            w.tqr
         FROM wellness w
         JOIN jugadores j ON j.id = w.jugador_id
         ORDER BY w.jugador_id, w.fecha
@@ -432,6 +440,91 @@ def calcular_alertas_hoy(fecha=None):
     panel = panel.sort_values("_orden").drop(columns="_orden")
 
     return panel.reset_index(drop=True)
+
+
+# ============================================================
+# SISTEMA DE ALERTAS RPE:TQR
+# Cruza el esfuerzo percibido de la sesión (RPE) con la recuperación
+# percibida del día (TQR) para detectar jugadores que acumulan carga
+# sin recuperar — el "índice" es simplemente RPE/TQR: cuanto más alto,
+# peor es la relación esfuerzo/recuperación.
+# ============================================================
+
+def _nivel_alerta_rpe_tqr(rpe, tqr):
+    """
+    Determina el nivel de alerta del cruce RPE:TQR para un jugador
+    en un día puntual.
+
+      ROJA    → RPE > 8  y TQR < 4  (esfuerzo muy alto, recuperación muy baja)
+      NARANJA → RPE > 7  y TQR < 5  (esfuerzo alto, recuperación baja)
+      VERDE   → sin cruce de riesgo
+    """
+    if pd.isna(rpe) or pd.isna(tqr):
+        return "SIN_DATOS"
+    if rpe > RPE_TQR_ROJA_RPE and tqr < RPE_TQR_ROJA_TQR:
+        return "ROJA"
+    if rpe > RPE_TQR_NARANJA_RPE and tqr < RPE_TQR_NARANJA_TQR:
+        return "NARANJA"
+    return "VERDE"
+
+
+def calcular_rpe_tqr_hoy(fecha=None):
+    """
+    Cruza el RPE de la sesión del día con el TQR del mismo día, jugador
+    por jugador. Si no se indica fecha, usa el último día con datos de
+    carga_interna.
+
+    Solo incluye jugadores con AMBOS datos cargados ese día (jugadores
+    en descanso sin sesión, o sin wellness cargado, quedan afuera).
+
+    Retorna DataFrame con:
+      jugador_id, jugador, posicion, numero, fecha,
+      rpe, tqr, indice_rpe_tqr (RPE / TQR), alerta
+    """
+    df_carga    = cargar_carga_interna()
+    df_wellness = cargar_wellness()
+
+    fecha_ref = df_carga["fecha"].max() if fecha is None else pd.Timestamp(fecha)
+
+    carga_dia = df_carga[df_carga["fecha"] == fecha_ref][
+        ["jugador_id", "jugador", "posicion", "numero", "fecha", "rpe"]
+    ].copy()
+    wellness_dia = df_wellness[df_wellness["fecha"] == fecha_ref][
+        ["jugador_id", "tqr"]
+    ].copy()
+
+    panel = carga_dia.merge(wellness_dia, on="jugador_id", how="inner")
+    panel = panel.dropna(subset=["rpe", "tqr"]).copy()
+
+    panel["indice_rpe_tqr"] = (panel["rpe"] / panel["tqr"]).round(2)
+    panel["alerta"] = panel.apply(
+        lambda f: _nivel_alerta_rpe_tqr(f["rpe"], f["tqr"]), axis=1
+    )
+
+    return panel.reset_index(drop=True)
+
+
+def historial_rpe_tqr_jugador(jugador_id, dias=14):
+    """
+    Historial de RPE (carga_interna) y TQR (wellness) de UN jugador
+    para los últimos `dias` días, pensado para graficar ambas series
+    superpuestas (misma escala 1-10 en los dos casos).
+
+    Retorna DataFrame con: fecha, rpe, tqr (ordenado por fecha).
+    """
+    df_carga    = cargar_carga_interna()
+    df_wellness = cargar_wellness()
+
+    carga_jug = df_carga[df_carga["jugador_id"] == jugador_id][["fecha", "rpe"]]
+    well_jug  = df_wellness[df_wellness["jugador_id"] == jugador_id][["fecha", "tqr"]]
+
+    historial = carga_jug.merge(well_jug, on="fecha", how="outer").sort_values("fecha")
+
+    fecha_max = historial["fecha"].max()
+    if pd.isna(fecha_max):
+        return historial
+
+    return historial[historial["fecha"] >= fecha_max - timedelta(days=dias - 1)].reset_index(drop=True)
 
 
 # ============================================================

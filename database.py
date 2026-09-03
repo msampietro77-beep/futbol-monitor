@@ -148,6 +148,7 @@ def crear_tablas(conn):
 
     # Registro diario de wellness  (escala 1-5 en todos los ítems)
     # wellness_total: promedio ajustado donde mayor = mejor bienestar
+    # tqr: Total Quality Recovery, escala 1-10 (1=sin recuperación, 10=recuperación máxima)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS wellness (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -160,6 +161,7 @@ def crear_tablas(conn):
             humor           INTEGER NOT NULL,
             estres          INTEGER NOT NULL,
             wellness_total  REAL    NOT NULL,
+            tqr             INTEGER,
             FOREIGN KEY (jugador_id) REFERENCES jugadores(id),
             UNIQUE (jugador_id, fecha)
         )
@@ -277,6 +279,55 @@ def crear_tablas(conn):
 
     conn.commit()
     print("  [OK] Tablas creadas")
+
+
+# ============================================================
+# MIGRACIÓN SEGURA: COLUMNA tqr EN wellness
+# SQLite no soporta "ALTER TABLE ... ADD COLUMN IF NOT EXISTS",
+# así que se verifica con PRAGMA table_info antes de alterar.
+# No borra ni pisa datos existentes.
+# ============================================================
+
+def migrar_columna_tqr(conn):
+    """
+    Agrega la columna 'tqr' a wellness si todavía no existe (bases de
+    datos creadas antes de agregar el TQR al sistema). Si la columna
+    se acaba de crear, rellena los registros históricos que quedaron
+    en NULL con un valor estimado a partir de fatiga y dolor muscular,
+    para que los gráficos de TQR no queden vacíos con datos viejos.
+    """
+    cur = conn.cursor()
+    columnas = [fila[1] for fila in cur.execute("PRAGMA table_info(wellness)").fetchall()]
+
+    if "tqr" in columnas:
+        return  # ya existe, no hay nada que migrar
+
+    cur.execute("ALTER TABLE wellness ADD COLUMN tqr INTEGER")
+    conn.commit()
+    print("  [OK] Migración: columna 'tqr' agregada a wellness")
+
+    # Backfill: estimar TQR de los registros históricos a partir de
+    # fatiga y dolor muscular (ambos en escala 1-5, más alto = peor).
+    # Recuperación alta cuando fatiga y dolor son bajos.
+    filas = cur.execute(
+        "SELECT id, fatiga, dolor_muscular, calidad_sueno, humor FROM wellness WHERE tqr IS NULL"
+    ).fetchall()
+
+    actualizaciones = []
+    for fila_id, fatiga, dolor_muscular, calidad_sueno, humor in filas:
+        estimado = (
+            10
+            - (fatiga - 1) * 1.2
+            - (dolor_muscular - 1) * 0.8
+            + (calidad_sueno - 3) * 0.4
+            + (humor - 3) * 0.3
+        )
+        tqr_backfill = int(round(min(10, max(1, estimado))))
+        actualizaciones.append((tqr_backfill, fila_id))
+
+    cur.executemany("UPDATE wellness SET tqr = ? WHERE id = ?", actualizaciones)
+    conn.commit()
+    print(f"  [OK] Migración: {len(actualizaciones)} registros de tqr histórico estimados")
 
 
 # ============================================================
@@ -505,6 +556,15 @@ def _valor_1_5(media, baseline, factor_dia, ruido=0.5):
     return int(np.clip(round(v), 1, 5))
 
 
+def _valor_1_10(media, baseline, factor_dia, ruido=1.2):
+    """
+    Igual que _valor_1_5 pero en escala 1-10. Se usa para el TQR
+    (Total Quality Recovery): 1=sin recuperación, 10=recuperación máxima.
+    """
+    v = np.random.normal(media * baseline * factor_dia, ruido)
+    return int(np.clip(round(v), 1, 10))
+
+
 def simular_wellness(conn, jugadores_df):
     """
     Simula 90 días de wellness para los 25 jugadores.
@@ -519,6 +579,11 @@ def simular_wellness(conn, jugadores_df):
 
     wellness_total (1-5): invierte los ítems negativos antes de promediar
       → siempre se interpreta como: más alto = mejor bienestar general
+
+    tqr (1-10): Total Quality Recovery — percepción subjetiva de
+      recuperación del jugador. 1 = sin recuperación, 10 = recuperación
+      máxima. Se simula con la misma lógica de baseline individual y
+      caída post-partido de los lunes que el resto de los ítems.
     """
     cur = conn.cursor()
     registros = []
@@ -537,6 +602,7 @@ def simular_wellness(conn, jugadores_df):
             dolor_muscular = _valor_1_5(2.8, baseline, factor_dia)
             humor          = _valor_1_5(3.8, baseline, factor_dia)
             estres         = _valor_1_5(2.5, baseline, factor_dia)
+            tqr            = _valor_1_10(7.2, baseline, factor_dia)
 
             # wellness_total: invertimos fatiga, dolor y estrés (eran "malo si alto")
             # Resultado: escala 1-5 donde 5 = bienestar perfecto
@@ -554,14 +620,14 @@ def simular_wellness(conn, jugadores_df):
             registros.append((
                 jugador["id"], str(fecha),
                 fatiga, calidad_sueno, horas_sueno,
-                dolor_muscular, humor, estres, wellness_total
+                dolor_muscular, humor, estres, wellness_total, tqr
             ))
 
     cur.executemany("""
         INSERT OR IGNORE INTO wellness
             (jugador_id, fecha, fatiga, calidad_sueno, horas_sueno,
-             dolor_muscular, humor, estres, wellness_total)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             dolor_muscular, humor, estres, wellness_total, tqr)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, registros)
     conn.commit()
     print(f"  [OK] {len(registros)} registros de wellness")
@@ -741,6 +807,7 @@ def inicializar_base_datos():
     conn = sqlite3.connect(DB_PATH)
 
     crear_tablas(conn)
+    migrar_columna_tqr(conn)
     insertar_jugadores(conn)
 
     # Leer jugadores con sus IDs asignados por la BD

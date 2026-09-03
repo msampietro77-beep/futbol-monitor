@@ -16,6 +16,11 @@ Escala 1-5 para todos los ítems:
   Dolor musc.   → 1 = sin dolor,    5 = dolor severo   (más alto = peor)
   Humor         → 1 = muy malo,     5 = excelente      (más alto = mejor)
   Estrés        → 1 = muy bajo,     5 = muy alto       (más alto = peor)
+
+Escala 1-10 para TQR (Total Quality Recovery):
+  1-3  = Poco recuperado  (rojo)
+  4-6  = Moderado         (naranja)
+  7-10 = Bien recuperado  (verde)
 """
 
 import streamlit as st
@@ -100,7 +105,7 @@ def cargar_wellness_fecha(fecha_str):
     conn = _conectar()
     df = pd.read_sql("""
         SELECT jugador_id, fatiga, calidad_sueno, horas_sueno,
-               dolor_muscular, humor, estres, wellness_total
+               dolor_muscular, humor, estres, wellness_total, tqr
         FROM wellness
         WHERE fecha = ?
     """, conn, params=[fecha_str])
@@ -125,8 +130,10 @@ def guardar_wellness(filas, fecha_str):
         dolor_muscular = int(row["Dolor musc."])
         humor          = int(row["Humor"])
         estres         = int(row["Estrés"])
+        tqr            = int(row["TQR"])
 
         # wellness_total: invierte los ítems negativos → más alto = mejor bienestar
+        # (el TQR es un ítem independiente, no entra en este promedio)
         wellness_total = round(
             (
                 (6 - fatiga)         +
@@ -143,14 +150,14 @@ def guardar_wellness(filas, fecha_str):
             fecha_str,
             fatiga, calidad_sueno, horas_sueno,
             dolor_muscular, humor, estres,
-            wellness_total
+            wellness_total, tqr
         ))
 
     cur.executemany("""
         INSERT OR REPLACE INTO wellness
             (jugador_id, fecha, fatiga, calidad_sueno, horas_sueno,
-             dolor_muscular, humor, estres, wellness_total)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             dolor_muscular, humor, estres, wellness_total, tqr)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, registros)
 
     conn.commit()
@@ -170,8 +177,10 @@ def construir_formulario(jugadores_df, wellness_hoy_df, wellness_ayer_df, filtro
       1. Si el jugador ya tiene datos hoy → usa esos datos (edición)
       2. Si tiene datos de ayer → los usa como punto de partida
       3. Si no hay datos anteriores → valor por defecto = 3
+         (el TQR usa 5 como valor por defecto: punto medio de su escala 1-10)
     """
     DEFECTO = 3
+    DEFECTO_TQR = 5
 
     # Filtrar por posición si corresponde
     if filtro_pos != "Todos":
@@ -208,6 +217,9 @@ def construir_formulario(jugadores_df, wellness_hoy_df, wellness_ayer_df, filtro
             "Dolor musc.":  int(src.get("dolor_muscular", DEFECTO)),
             "Humor":        int(src.get("humor",           DEFECTO)),
             "Estrés":       int(src.get("estres",          DEFECTO)),
+            # tqr es nullable en la BD (columna agregada después) → si es
+            # None a pesar de estar la clave presente, usamos el defecto
+            "TQR":          int(src.get("tqr") if src.get("tqr") is not None else DEFECTO_TQR),
         })
 
     return pd.DataFrame(filas)
@@ -235,6 +247,18 @@ def color_wellness(val):
     elif val >= 3.5:
         return "background-color:#d4edda; color:#155724; font-weight:bold"
     elif val >= 2.8:
+        return "background-color:#fff3cd; color:#856404; font-weight:bold"
+    else:
+        return "background-color:#f8d7da; color:#721c24; font-weight:bold"
+
+
+def color_tqr(val):
+    """Colorea la columna TQR según nivel: 1-3 rojo · 4-6 naranja · 7-10 verde."""
+    if pd.isna(val):
+        return ""
+    elif val >= 7:
+        return "background-color:#d4edda; color:#155724; font-weight:bold"
+    elif val >= 4:
         return "background-color:#fff3cd; color:#856404; font-weight:bold"
     else:
         return "background-color:#f8d7da; color:#721c24; font-weight:bold"
@@ -313,8 +337,8 @@ with col_estado:
 # REFERENCIA DE ESCALA (expandible para no ocupar espacio)
 # ============================================================
 
-with st.expander("📖 Referencia de escala 1-5"):
-    col_a, col_b, col_c = st.columns(3)
+with st.expander("📖 Referencia de escalas"):
+    col_a, col_b, col_c, col_d = st.columns(4)
     with col_a:
         st.markdown("""
         **😴 Fatiga** *(más alto = peor)*
@@ -350,6 +374,13 @@ with st.expander("📖 Referencia de escala 1-5"):
         - 1 = Sin estrés
         - 3 = Estrés moderado
         - 5 = Muy estresado
+        """)
+    with col_d:
+        st.markdown("""
+        **🔋 TQR** *(Total Quality Recovery, escala 1-10)*
+        - 🔴 1-3 = Poco recuperado
+        - 🟠 4-6 = Moderado
+        - 🟢 7-10 = Bien recuperado
         """)
 
 st.divider()
@@ -394,6 +425,11 @@ column_config = {
                          "🧠 Estrés", min_value=1, max_value=5, step=1,
                          help="1=sin estrés · 5=muy estresado  (más alto = peor)",
                          width=80),
+    "TQR":           st.column_config.NumberColumn(
+                         "🔋 TQR", min_value=1, max_value=10, step=1,
+                         help="Total Quality Recovery — 1=sin recuperación · 10=recuperación máxima  "
+                              "(1-3 poco recuperado · 4-6 moderado · 7-10 bien recuperado)",
+                         width=80),
 }
 
 # Editor de datos — el corazón del formulario
@@ -402,7 +438,7 @@ df_editado = st.data_editor(
     column_config=column_config,
     column_order=["#", "Jugador", "Pos.", "✓",
                   "Fatiga", "Sueño calidad", "Sueño horas",
-                  "Dolor musc.", "Humor", "Estrés"],
+                  "Dolor musc.", "Humor", "Estrés", "TQR"],
     hide_index=True,
     width='stretch',
     num_rows="fixed",           # no se pueden agregar/quitar filas
@@ -420,11 +456,12 @@ df_preview = calcular_wellness_total(df_editado)
 st.markdown("**Vista previa del Wellness Total calculado:**")
 
 preview_cols = ["#", "Jugador", "Pos.", "Fatiga", "Sueño calidad", "Sueño horas",
-                "Dolor musc.", "Humor", "Estrés", "Wellness"]
+                "Dolor musc.", "Humor", "Estrés", "TQR", "Wellness"]
 
 styled_preview = (
     df_preview[preview_cols].style
     .map(color_wellness, subset=["Wellness"])
+    .map(color_tqr, subset=["TQR"])
     .format({"Wellness": "{:.2f}"})
     .hide(axis="index")
 )
@@ -465,7 +502,7 @@ with col_info:
 # Ejecutar guardado
 if guardar:
     try:
-        # Validar que todos los valores estén en rango 1-5
+        # Validar que todos los valores estén en rango 1-5 (y el TQR en 1-10)
         items = ["Fatiga", "Sueño calidad", "Sueño horas", "Dolor musc.", "Humor", "Estrés"]
         fuera_de_rango = []
         for item in items:
@@ -475,10 +512,16 @@ if guardar:
             if invalidos:
                 fuera_de_rango.extend([f"{j} ({item})" for j in invalidos])
 
+        invalidos_tqr = df_editado[
+            (df_editado["TQR"] < 1) | (df_editado["TQR"] > 10)
+        ]["Jugador"].tolist()
+        if invalidos_tqr:
+            fuera_de_rango.extend([f"{j} (TQR)" for j in invalidos_tqr])
+
         if fuera_de_rango:
             st.error(
-                f"❌ Valores fuera de rango (1-5) en: {', '.join(fuera_de_rango[:5])}. "
-                f"Corregí antes de guardar."
+                f"❌ Valores fuera de rango en: {', '.join(fuera_de_rango[:5])}. "
+                f"Corregí antes de guardar (escala 1-5, TQR 1-10)."
             )
         else:
             n_guardados = guardar_wellness(df_editado, fecha_str)

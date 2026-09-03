@@ -31,6 +31,7 @@ from metricas import (
     resumen_acwr_plantel,
     calcular_baseline_plantel,
     snapshot_fuerza_plantel,
+    historial_rpe_tqr_jugador,
 )
 
 
@@ -408,3 +409,68 @@ with tab_individual:
             "Escala 0-100 · más alto = mejor (en ACWR, más cerca del centro "
             "de la zona óptima 0.8–1.3)."
         )
+
+    # ── Historial RPE vs TQR — últimos 14 días ──────────────────
+    st.divider()
+    st.markdown(f"#### 📈 Historial RPE vs TQR — {fila_jugador['jugador']} (últimos 14 días)")
+    st.caption(
+        "Ambas series comparten la misma escala 1-10: RPE alto con TQR bajo "
+        "sostenido en el tiempo es la señal de alerta a vigilar."
+    )
+
+    historial_rt = historial_rpe_tqr_jugador(jugador_sel_id, dias=14)
+
+    if historial_rt.empty or historial_rt[["rpe", "tqr"]].isna().all(axis=None):
+        st.info("Sin datos de RPE/TQR en los últimos 14 días para este jugador.")
+    else:
+        _fechas_rt = historial_rt["fecha"].dt.strftime("%d/%m").tolist()
+
+        option_historial_rt = {
+            **_EP_ANIM,
+            "tooltip": {**_EP_TOOLTIP, "trigger": "axis"},
+            "legend": {**_EP_LEGEND, "data": ["RPE sesión", "TQR"]},
+            "grid": {"top": 30, "bottom": 70, "left": 50, "right": 24},
+            "xAxis": {
+                "type": "category",
+                "data": _fechas_rt,
+                "axisLabel": {"fontSize": 12, "color": "#666666", "rotate": 30, "fontFamily": _EP_FONT},
+                "axisLine": {"show": False},
+                "axisTick": {"show": False},
+                "splitLine": {"show": False},
+            },
+            "yAxis": {
+                "type": "value",
+                "name": "Escala 1-10",
+                "min": 0,
+                "max": 10,
+                "nameTextStyle": {"color": "#888888", "fontSize": 11, "fontFamily": _EP_FONT},
+                "axisLabel": {"color": "#666666", "fontSize": 12, "fontFamily": _EP_FONT},
+                "axisLine": {"show": False},
+                "axisTick": {"show": False},
+                "splitLine": {"lineStyle": {"color": "#f0f0f0", "width": 1}},
+            },
+            "series": [
+                {
+                    "name": "RPE sesión",
+                    "type": "line",
+                    "data": [None if pd.isna(v) else round(float(v), 1) for v in historial_rt["rpe"]],
+                    "connectNulls": True,
+                    "symbol": "circle",
+                    "symbolSize": 7,
+                    "lineStyle": {"color": "#F47920", "width": 2.5},
+                    "itemStyle": {"color": "#F47920"},
+                },
+                {
+                    "name": "TQR",
+                    "type": "line",
+                    "data": [None if pd.isna(v) else round(float(v), 1) for v in historial_rt["tqr"]],
+                    "connectNulls": True,
+                    "symbol": "circle",
+                    "symbolSize": 7,
+                    "lineStyle": {"color": "#2d6a9f", "width": 2.5, "type": "dashed"},
+                    "itemStyle": {"color": "#2d6a9f"},
+                },
+            ],
+        }
+
+        st_echarts(options=option_historial_rt, height="340px")

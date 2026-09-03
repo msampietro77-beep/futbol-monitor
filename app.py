@@ -73,6 +73,7 @@ else:
     # (CREATE TABLE IF NOT EXISTS e INSERT OR IGNORE son seguros de repetir)
     _conn = sqlite3.connect(DB_PATH)
     database.crear_tablas(_conn)
+    database.migrar_columna_tqr(_conn)
     database.insertar_protocolo_rtp(_conn)
     _conn.close()
 
@@ -90,6 +91,7 @@ from metricas import (
     cargar_jugadores,
     cargar_etapas_rtp,
     cargar_sesiones_rtp_jugador,
+    calcular_rpe_tqr_hoy,
 )
 
 
@@ -112,6 +114,10 @@ def obtener_acwr_historico():
 @st.cache_data(ttl=300)
 def obtener_wellness_historico():
     return cargar_wellness()
+
+@st.cache_data(ttl=300)
+def obtener_rpe_tqr_hoy():
+    return calcular_rpe_tqr_hoy()
 
 @st.cache_data(ttl=300)
 def obtener_estado_rtp():
@@ -877,6 +883,169 @@ with col_det:
         f"<b>Hoy: {wellness_hoy_prom:.2f}</b> — {estado_hoy}</div>",
         unsafe_allow_html=True,
     )
+
+st.divider()
+
+
+# ============================================================
+# SECCIÓN 5B: BALANCE RPE:TQR DEL DÍA
+# Cruza el esfuerzo percibido de la sesión (RPE) con la recuperación
+# percibida (TQR) para detectar jugadores que acumulan carga sin
+# recuperar adecuadamente.
+# ============================================================
+
+st.subheader("⚖️ Balance RPE:TQR del Día")
+st.caption(
+    "Eje X: RPE de la sesión de hoy · Eje Y: TQR de hoy. "
+    "Solo se muestran jugadores con ambos datos cargados."
+)
+
+rpe_tqr_df = obtener_rpe_tqr_hoy()
+
+if rpe_tqr_df.empty:
+    st.info(
+        "Sin datos suficientes para cruzar RPE y TQR hoy. "
+        "Se necesita carga interna (Front Desk) y wellness (Wellness Diario) del mismo día."
+    )
+else:
+    col_scatter_rt, col_alertas_rt = st.columns([2.2, 1])
+
+    with col_scatter_rt:
+        # Punto medio de la escala 1-10: separa "alto" de "bajo" en ambos ejes
+        _CORTE_RT = 5.5
+
+        _colores_cuadrante = {
+            "riesgo":      "#d63031",   # alto RPE + bajo TQR
+            "optima":      "#1a9e5c",   # alto RPE + alto TQR
+            "investigar":  "#F47920",   # bajo RPE + bajo TQR
+            "recuperando": "#2d6a9f",   # bajo RPE + alto TQR (azul)
+        }
+
+        def _cuadrante_rpe_tqr(rpe, tqr):
+            alto_rpe = rpe >= _CORTE_RT
+            alto_tqr = tqr >= _CORTE_RT
+            if alto_rpe and not alto_tqr:
+                return "riesgo"
+            if alto_rpe and alto_tqr:
+                return "optima"
+            if not alto_rpe and not alto_tqr:
+                return "investigar"
+            return "recuperando"
+
+        _scatter_rt_data = [
+            {
+                "value": [float(f["rpe"]), float(f["tqr"])],
+                "name": f["jugador"],
+                "posicion": f["posicion"],
+                "numero": int(f["numero"]),
+                "itemStyle": {
+                    "color": _colores_cuadrante[_cuadrante_rpe_tqr(f["rpe"], f["tqr"])],
+                    "borderColor": "#fff",
+                    "borderWidth": 1,
+                    "shadowBlur": 3,
+                    "shadowColor": "rgba(0,0,0,0.15)",
+                },
+            }
+            for _, f in rpe_tqr_df.iterrows()
+        ]
+
+        _tooltip_rt = JsCode("""
+function (p) {
+    var d = p.data;
+    return '<b>#' + d.numero + ' ' + d.name + '</b> (' + d.posicion + ')<br/>' +
+           'RPE: <b>' + d.value[0].toFixed(0) + '</b><br/>' +
+           'TQR: <b>' + d.value[1].toFixed(0) + '</b>';
+}
+""")
+
+        option_scatter_rt = {
+            **_EP_ANIM,
+            "tooltip": {**_EP_TOOLTIP, "formatter": _tooltip_rt},
+            "grid": {"top": 30, "bottom": 50, "left": 55, "right": 30},
+            "xAxis": {
+                "type": "value",
+                "name": "RPE de la sesión",
+                "min": 0,
+                "max": 10,
+                "nameTextStyle": {"color": "#888888", "fontSize": 11, "fontFamily": _EP_FONT},
+                "axisLabel": {"color": "#666666", "fontSize": 12, "fontFamily": _EP_FONT},
+                "axisLine": {"show": False},
+                "axisTick": {"show": False},
+                "splitLine": {"show": False},
+            },
+            "yAxis": {
+                "type": "value",
+                "name": "TQR",
+                "min": 0,
+                "max": 10,
+                "nameTextStyle": {"color": "#888888", "fontSize": 11, "fontFamily": _EP_FONT},
+                "axisLabel": {"color": "#666666", "fontSize": 12, "fontFamily": _EP_FONT},
+                "axisLine": {"show": False},
+                "axisTick": {"show": False},
+                "splitLine": {"lineStyle": {"color": "#f0f0f0", "width": 1}},
+            },
+            "series": [
+                {
+                    # Serie invisible: solo dibuja los 4 cuadrantes de fondo
+                    "type": "scatter",
+                    "data": [],
+                    "silent": True,
+                    "markArea": {
+                        "silent": True,
+                        "label": {"show": True, "fontSize": 10, "color": "#898781"},
+                        "data": [
+                            [{"xAxis": 0, "yAxis": _CORTE_RT, "name": "Recuperando",
+                              "itemStyle": {"color": "rgba(45,106,159,0.08)"}},
+                             {"xAxis": _CORTE_RT, "yAxis": 10}],
+                            [{"xAxis": _CORTE_RT, "yAxis": _CORTE_RT, "name": "Óptima",
+                              "itemStyle": {"color": "rgba(26,158,92,0.08)"}},
+                             {"xAxis": 10, "yAxis": 10}],
+                            [{"xAxis": 0, "yAxis": 0, "name": "Investigar",
+                              "itemStyle": {"color": "rgba(244,121,32,0.08)"}},
+                             {"xAxis": _CORTE_RT, "yAxis": _CORTE_RT}],
+                            [{"xAxis": _CORTE_RT, "yAxis": 0, "name": "Riesgo",
+                              "itemStyle": {"color": "rgba(214,48,49,0.08)"}},
+                             {"xAxis": 10, "yAxis": _CORTE_RT}],
+                        ],
+                    },
+                },
+                {
+                    "type": "scatter",
+                    "symbolSize": 16,
+                    "data": _scatter_rt_data,
+                },
+            ],
+        }
+
+        st_echarts(options=option_scatter_rt, height="420px")
+
+        st.markdown("""
+        **Cuadrantes:** 🔴 Alto RPE + Bajo TQR = riesgo · 🟢 Alto RPE + Alto TQR = óptima ·
+        🟠 Bajo RPE + Bajo TQR = investigar · 🔵 Bajo RPE + Alto TQR = recuperando
+        """)
+
+    with col_alertas_rt:
+        st.markdown("**Alertas RPE:TQR de hoy**")
+        st.caption("RPE > 7 y TQR < 5 → naranja · RPE > 8 y TQR < 4 → roja")
+
+        n_roja    = int((rpe_tqr_df["alerta"] == "ROJA").sum())
+        n_naranja = int((rpe_tqr_df["alerta"] == "NARANJA").sum())
+
+        m1, m2 = st.columns(2)
+        m1.metric("🔴 Roja",    n_roja)
+        m2.metric("🟠 Naranja", n_naranja)
+
+        alertados = rpe_tqr_df[rpe_tqr_df["alerta"].isin(["ROJA", "NARANJA"])].copy()
+        if alertados.empty:
+            st.success("✅ Sin cruces de riesgo RPE:TQR hoy.")
+        else:
+            tabla_rt = alertados[["numero", "jugador", "rpe", "tqr", "indice_rpe_tqr", "alerta"]].rename(
+                columns={
+                    "numero": "#", "jugador": "Jugador", "rpe": "RPE",
+                    "tqr": "TQR", "indice_rpe_tqr": "Índice RPE:TQR", "alerta": "Alerta",
+                }
+            )
+            st.dataframe(tabla_rt, hide_index=True, width='stretch', height=180)
 
 st.divider()
 
