@@ -95,6 +95,7 @@ from metricas import (
     cargar_etapas_rtp,
     cargar_sesiones_rtp_jugador,
     calcular_rpe_tqr_hoy,
+    cargar_carga_externa_fecha,
 )
 
 
@@ -121,6 +122,10 @@ def obtener_wellness_historico():
 @st.cache_data(ttl=300)
 def obtener_rpe_tqr_hoy():
     return calcular_rpe_tqr_hoy()
+
+@st.cache_data(ttl=300)
+def obtener_carga_gps_fecha(fecha_str):
+    return cargar_carga_externa_fecha(fecha_str)
 
 @st.cache_data(ttl=300)
 def obtener_estado_rtp():
@@ -366,13 +371,30 @@ COLOR_FONDO = {
 }
 
 semaforo = disponibles[[
-    "numero", "jugador", "posicion",
+    "jugador_id", "numero", "jugador", "posicion",
     "tipo_sesion", "training_load",
     "acwr", "wellness_hoy",
     "alerta", "motivo",
 ]].copy()
 
 semaforo["training_load"] = semaforo["training_load"].fillna(0).astype(int)
+
+# --- Datos GPS del día (tabla carga_externa — módulo Carga GPS) ---
+# Si todavía no se importó ningún GPS ese día, las columnas quedan en blanco.
+fecha_ref_gps = disponibles["fecha"].iloc[0].strftime("%Y-%m-%d") if not disponibles.empty else None
+gps_hoy = obtener_carga_gps_fecha(fecha_ref_gps) if fecha_ref_gps else pd.DataFrame()
+
+if not gps_hoy.empty:
+    semaforo = semaforo.merge(
+        gps_hoy[["jugador_id", "distance", "d_shi", "smax_kmh", "imbalance"]],
+        on="jugador_id", how="left",
+    )
+else:
+    for _col_gps in ["distance", "d_shi", "smax_kmh", "imbalance"]:
+        semaforo[_col_gps] = pd.NA
+
+semaforo = semaforo.drop(columns=["jugador_id"])
+
 semaforo = semaforo.rename(columns={
     "numero":        "#",
     "jugador":       "Jugador",
@@ -383,6 +405,10 @@ semaforo = semaforo.rename(columns={
     "wellness_hoy":  "Wellness",
     "alerta":        "Alerta",
     "motivo":        "Detalle",
+    "distance":      "Distancia (m)",
+    "d_shi":         "D_SHI (m)",
+    "smax_kmh":      "Vel. máx (km/h)",
+    "imbalance":     "Imbalance (%)",
 })
 
 def _color_alerta_celda(val):
@@ -400,11 +426,24 @@ def _color_acwr_celda(val):
     else:
         return "background-color:#FF4B4B; color:white; font-weight:bold"
 
+def _color_imbalance_celda(val):
+    if pd.isna(val):
+        return ""
+    elif abs(val) > 10:
+        return "background-color:#FF4B4B; color:white; font-weight:bold"
+    else:
+        return ""
+
 styled_semaforo = (
     semaforo.style
-    .map(_color_alerta_celda, subset=["Alerta"])
-    .map(_color_acwr_celda,   subset=["ACWR"])
-    .format({"ACWR": "{:.2f}", "Wellness": "{:.1f}"}, na_rep="—")
+    .map(_color_alerta_celda,     subset=["Alerta"])
+    .map(_color_acwr_celda,       subset=["ACWR"])
+    .map(_color_imbalance_celda,  subset=["Imbalance (%)"])
+    .format({
+        "ACWR": "{:.2f}", "Wellness": "{:.1f}",
+        "Distancia (m)": "{:.0f}", "D_SHI (m)": "{:.0f}",
+        "Vel. máx (km/h)": "{:.1f}", "Imbalance (%)": "{:.1f}",
+    }, na_rep="—")
     .hide(axis="index")
 )
 

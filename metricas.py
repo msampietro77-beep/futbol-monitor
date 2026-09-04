@@ -815,6 +815,57 @@ def snapshot_fuerza_plantel():
 
 
 # ============================================================
+# CARGA EXTERNA (GPS — KSport)
+# ============================================================
+
+def cargar_carga_externa():
+    """
+    Carga toda la tabla carga_externa (datos GPS de KSport o carga manual)
+    con nombre del jugador y posición.
+    """
+    conn = _conectar()
+    df = pd.read_sql("""
+        SELECT
+            ce.jugador_id,
+            j.nombre || ' ' || j.apellido AS jugador,
+            j.posicion,
+            j.numero_camiseta AS numero,
+            ce.fecha,
+            ce.tipo_sesion,
+            ce.origen,
+            ce.minutes, ce.distance, ce.drel, ce.d_shi,
+            ce.d_20_25_kmh, ce.d_25_kmh, ce.d_30_kmh, ce.smax_kmh,
+            ce.d_acchi, ce.d_dechi, ce.d_acc_4, ce.d_dec_4,
+            ce.dechi_index, ce.dec_4_index, ce.rpe, ce.ua,
+            ce.d_mp_20wkg, ce.d_mphi, ce.d_mp_55,
+            ce.num_sprint, ce.amax, ce.num_acc_hi, ce.num_dec_hi,
+            ce.num_acc_4, ce.num_dec_4, ce.eee_kcal, ce.eee_ai_kcal,
+            ce.imbalance, ce.distancia_relativa, ce.ratio_hsr,
+            ce.indice_carga_neuromuscular, ce.imbalance_flag
+        FROM carga_externa ce
+        JOIN jugadores j ON j.id = ce.jugador_id
+        ORDER BY ce.jugador_id, ce.fecha
+    """, conn, parse_dates=["fecha"])
+    conn.close()
+    return df
+
+
+def cargar_carga_externa_fecha(fecha_str):
+    """
+    Carga los registros GPS de UNA fecha específica — pensado para el
+    Dashboard, que solo necesita las 4 métricas clave del día.
+    """
+    conn = _conectar()
+    df = pd.read_sql("""
+        SELECT jugador_id, distance, d_shi, smax_kmh, imbalance, imbalance_flag
+        FROM carga_externa
+        WHERE fecha = ?
+    """, conn, params=[fecha_str])
+    conn.close()
+    return df
+
+
+# ============================================================
 # FUNCIONES RTP (Return to Play)
 # ============================================================
 

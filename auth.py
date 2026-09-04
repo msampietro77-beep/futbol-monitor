@@ -75,7 +75,7 @@ USUARIOS = {
 
 PAGINAS_POR_ROL = {
     "director": [
-        "Dashboard", "Front_Desk", "Wellness_Diario", "Carga_Gym",
+        "Dashboard", "Front_Desk", "Wellness_Diario", "Carga_Gym", "Carga_GPS",
         "Epidemiologia", "RTP", "ML_Riesgo", "Perfil_Jugador",
     ],
     "medico": [
@@ -85,7 +85,7 @@ PAGINAS_POR_ROL = {
         "Wellness_Diario", "RTP", "Epidemiologia", "Perfil_Jugador",
     ],
     "preparador": [
-        "Dashboard", "Front_Desk", "Carga_Gym", "Perfil_Jugador",
+        "Dashboard", "Front_Desk", "Carga_Gym", "Carga_GPS", "Perfil_Jugador",
     ],
     # El módulo de nutrición todavía no existe — el rol queda
     # definido para cuando se agregue esa página.
@@ -114,6 +114,7 @@ PAGINAS_LEGIBLES = {
     "Front_Desk": "Front Desk",
     "Wellness_Diario": "Wellness Diario",
     "Carga_Gym": "Carga Gym",
+    "Carga_GPS": "Carga GPS",
     "Epidemiologia": "Epidemiología",
     "RTP": "RTP",
     "ML_Riesgo": "Riesgo de Lesión (ML)",

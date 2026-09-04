@@ -277,6 +277,59 @@ def crear_tablas(conn):
         )
     """)
 
+    # Carga externa (GPS) — importación de CSV de KSport o carga manual
+    # cuando no hay GPS disponible. Todas las métricas quedan en su
+    # unidad original del CSV (minutos, metros, km/h, etc.).
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS carga_externa (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            jugador_id          INTEGER NOT NULL,
+            fecha               TEXT    NOT NULL,
+            tipo_sesion         TEXT    NOT NULL,   -- 'entrenamiento' o 'partido'
+            origen              TEXT    NOT NULL DEFAULT 'manual',  -- 'csv_ksport' o 'manual'
+            jugador_csv         TEXT,               -- nombre tal cual venía en el CSV (auditoría)
+
+            -- Columnas exactas del export de KSport (separador ';')
+            minutes             REAL,
+            distance            REAL,
+            drel                REAL,
+            d_shi               REAL,
+            d_20_25_kmh         REAL,
+            d_25_kmh            REAL,
+            d_30_kmh            REAL,
+            smax_kmh            REAL,
+            d_acchi             REAL,
+            d_dechi             REAL,
+            d_acc_4             REAL,
+            d_dec_4             REAL,
+            dechi_index         REAL,
+            dec_4_index         REAL,
+            rpe                 REAL,
+            ua                  REAL,
+            d_mp_20wkg          REAL,
+            d_mphi              REAL,
+            d_mp_55             REAL,
+            num_sprint          REAL,
+            amax                REAL,
+            num_acc_hi          REAL,
+            num_dec_hi          REAL,
+            num_acc_4           REAL,
+            num_dec_4           REAL,
+            eee_kcal            REAL,
+            eee_ai_kcal         REAL,
+            imbalance           REAL,
+
+            -- Métricas derivadas (calculadas al importar/guardar)
+            distancia_relativa          REAL,  -- Distance / Minutes
+            ratio_hsr                   REAL,  -- D_SHI / Distance × 100
+            indice_carga_neuromuscular  REAL,  -- (Num Acc HI + Num Dec HI) / Minutes
+            imbalance_flag              INTEGER DEFAULT 0,  -- 1 si |Imbalance| > 10
+
+            FOREIGN KEY (jugador_id) REFERENCES jugadores(id),
+            UNIQUE (jugador_id, fecha)
+        )
+    """)
+
     conn.commit()
     print("  [OK] Tablas creadas")
 
