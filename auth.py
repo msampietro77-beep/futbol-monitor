@@ -170,9 +170,13 @@ def mostrar_login():
     col_vacia_izq, col_form, col_vacia_der = st.columns([1, 1.4, 1])
     with col_form:
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("## ⚽ Monitor de Rendimiento del Plantel")
-        st.markdown("#### Iniciar sesión")
-        st.caption("Sistema de Monitoreo de Rendimiento · EQUIPOPHYSICAL")
+        st.markdown(
+            '<div class="ep-badge ep-badge-performance">EQUIPOPHYSICAL</div>'
+            '<div class="ep-section-title" style="font-size:1.3rem;">'
+            'Monitor de Rendimiento del Plantel</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption("Iniciar sesión")
 
         with st.form("form_login"):
             usuario = st.text_input("Usuario", placeholder="ej: director")
