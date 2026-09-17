@@ -246,6 +246,67 @@ def calcular_metricas(lesiones_df, exposicion_df):
     }
 
 
+def calcular_disponibilidad():
+    """Porcentaje del plantel SIN lesión activa hoy (no es un promedio histórico)."""
+    conn = _conectar()
+    total = pd.read_sql("SELECT COUNT(*) AS n FROM jugadores", conn)["n"].iloc[0]
+    lesionados = pd.read_sql(
+        "SELECT COUNT(DISTINCT jugador_id) AS n FROM lesiones WHERE activo = 1", conn
+    )["n"].iloc[0]
+    conn.close()
+
+    total = int(total)
+    lesionados = int(lesionados)
+    disponibles = total - lesionados
+    pct = round(disponibles / total * 100, 1) if total > 0 else 0
+    return {"total": total, "disponibles": disponibles, "lesionados": lesionados, "pct": pct}
+
+
+def calcular_tendencia_carga_lesional(lesiones_df):
+    """
+    Compara la carga lesional (días de baja / 1000 HA) de los últimos
+    30 días contra los 30 días anteriores, para saber si la tendencia
+    es a la suba o a la baja.
+    """
+    conn = _conectar()
+    hoy = pd.Timestamp.today().normalize()
+    ventanas = {
+        "actual": (hoy - pd.Timedelta(days=29), hoy),
+        "previa": (hoy - pd.Timedelta(days=59), hoy - pd.Timedelta(days=30)),
+    }
+
+    valores = {}
+    for clave, (desde, hasta) in ventanas.items():
+        ha_df = pd.read_sql(
+            "SELECT SUM(minutos) AS total FROM carga_interna WHERE fecha BETWEEN ? AND ?",
+            conn, params=[str(desde.date()), str(hasta.date())],
+        )
+        ha = (ha_df["total"].iloc[0] or 0) / 60
+
+        dias_baja = lesiones_df[
+            (lesiones_df["fecha_inicio"] >= desde) & (lesiones_df["fecha_inicio"] <= hasta)
+        ]["dias_baja"].sum()
+
+        valores[clave] = (dias_baja / ha * 1000) if ha > 0 else 0
+
+    conn.close()
+    delta = round(valores["actual"] - valores["previa"], 1)
+    return delta
+
+
+def _nivel_incidencia(inc_total):
+    """
+    Semáforo de incidencia total: verde <3, naranja 3-6, rojo >6
+    (lesiones / 1000 horas-atleta).
+    """
+    if inc_total < 3:
+        return "CONTROLADA", "#1a9e5c"
+    elif inc_total <= 6:
+        return "MODERADA", "#F47920"
+    else:
+        return "CRÍTICA", "#d63031"
+
+
 # ============================================================
 # SIDEBAR
 # ============================================================
@@ -269,9 +330,11 @@ with st.sidebar:
 # CARGA INICIAL
 # ============================================================
 
-lesiones_df  = cargar_todas_lesiones()
+lesiones_df   = cargar_todas_lesiones()
 exposicion_df = cargar_exposicion()
 m             = calcular_metricas(lesiones_df, exposicion_df)
+disp          = calcular_disponibilidad()
+delta_carga   = calcular_tendencia_carga_lesional(lesiones_df)
 
 
 # ============================================================
@@ -287,68 +350,132 @@ st.divider()
 
 
 # ============================================================
-# SECCIÓN 1: MÉTRICAS PRINCIPALES
+# SECCIÓN 1: MÉTRICAS — 3 NIVELES DE JERARQUÍA
+# Nivel 1: KPIs críticos (grandes) · Nivel 2: contexto (medianos)
+# Nivel 3: detalle técnico (colapsado, para el staff que lo necesita)
 # ============================================================
 
 st.markdown('<div class="ep-badge ep-badge-medico">Medico</div>', unsafe_allow_html=True)
 st.markdown('<div class="ep-section-title">Indicadores Epidemiológicos Principales</div>', unsafe_allow_html=True)
 
-# Fila 1: Totales
-r1c1, r1c2, r1c3, r1c4 = st.columns(4)
-r1c1.metric("Total lesiones",       m["n_total"])
-r1c2.metric("Días de baja totales", m["dias_baja_total"])
-r1c3.metric("Horas-atleta totales", f"{m['ha_total']:,.0f} HA")
-r1c4.metric("Severidad media",      f"{m['severidad_media']}")
-r1c4.caption("días de baja por lesión")
+# ── Semáforo de estado general ──────────────────────────────
+# Mismo umbral que el KPI de incidencia (nivel 1), para que la
+# etiqueta de arriba y el número de abajo siempre cuenten la misma
+# historia clínica.
+nivel_txt, nivel_color = _nivel_incidencia(m["inc_total"])
+st.markdown(f"""
+<div style="background:{nivel_color}1A; border:2px solid {nivel_color}; border-radius:8px;
+            padding:14px 20px; text-align:center; margin-bottom:20px;">
+    <span style="color:#8b92a8; font-size:0.75rem; letter-spacing:1px; text-transform:uppercase;">
+        Situación epidemiológica
+    </span><br>
+    <span style="color:{nivel_color}; font-size:1.7rem; font-weight:700; letter-spacing:1px;">
+        {nivel_txt}
+    </span>
+</div>
+""", unsafe_allow_html=True)
 
-st.markdown(" ")
 
-# Fila 2: Métricas de incidencia (núcleo del estándar IOC)
-r2c1, r2c2, r2c3, r2c4 = st.columns(4)
+def _kpi_card(etiqueta, valor, color_valor, subtexto, color_subtexto="#8b92a8"):
+    """Card grande de Nivel 1 — un número protagonista con su contexto abajo."""
+    return f"""
+    <div class="ep-card" style="text-align:center;">
+        <div style="color:#8b92a8; font-size:0.78rem; text-transform:uppercase; letter-spacing:1px;">
+            {etiqueta}
+        </div>
+        <div style="color:{color_valor}; font-size:2.5rem; font-weight:700; margin:6px 0;">
+            {valor}
+        </div>
+        <div style="color:{color_subtexto}; font-size:0.82rem;">
+            {subtexto}
+        </div>
+    </div>
+    """
 
-r2c1.metric(
-    "Incidencia total",
-    f"{m['inc_total']}",
-    help="(N lesiones / Horas-atleta totales) × 1000 — Estándar IOC",
-)
-r2c1.caption("lesiones / 1000 horas-atleta")
 
-r2c2.metric(
-    "Incidencia en partido",
-    f"{m['inc_partido']}",
-    help="Solo horas de exposición en partidos",
-)
-r2c2.caption("lesiones / 1000 horas-atleta")
+# ── NIVEL 1: KPIs críticos ──────────────────────────────────
+col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
 
-r2c3.metric(
-    "Incidencia en entreno",
-    f"{m['inc_entreno']}",
-    help="Solo horas de exposición en entrenamiento",
-)
-r2c3.caption("lesiones / 1000 horas-atleta")
+with col_kpi1:
+    st.markdown(_kpi_card(
+        "Disponibilidad actual",
+        f"{disp['pct']}%",
+        "#F47920",
+        f"{disp['disponibles']} / {disp['total']} jugadores sin lesión",
+    ), unsafe_allow_html=True)
 
-r2c4.metric(
-    "Carga lesional",
-    f"{m['carga_lesional']}",
-    help="Incidencia × Severidad media · días de baja perdidos por cada 1000 HA",
-)
-r2c4.caption("días de baja / 1000 horas-atleta")
+with col_kpi2:
+    st.markdown(_kpi_card(
+        "Incidencia total",
+        f"{m['inc_total']}",
+        nivel_color,
+        "lesiones / 1000 horas-atleta",
+    ), unsafe_allow_html=True)
 
-st.markdown(" ")
+with col_kpi3:
+    color_tendencia = "#d63031" if delta_carga > 0 else "#1a9e5c" if delta_carga < 0 else "#8b92a8"
+    signo = "+" if delta_carga > 0 else ""
+    st.markdown(_kpi_card(
+        "Carga lesional",
+        f"{m['carga_lesional']}",
+        "#F47920",
+        f"Tendencia 30d: {signo}{delta_carga}",
+        color_subtexto=color_tendencia,
+    ), unsafe_allow_html=True)
 
-# Fila 3: Contexto y re-lesión
-r3c1, r3c2, r3c3, r3c4 = st.columns(4)
-r3c1.metric("Lesiones en partido",      m["n_partido"])
-r3c2.metric("Lesiones en entrenamiento", m["n_entreno"])
-r3c3.metric("Re-lesiones",              m["n_relesiones"])
-r3c4.metric(
-    "Tasa de re-lesión",
-    f"{m['tasa_relesion']} %",
-    help="Lesiones en zona previamente lesionada del mismo jugador",
-)
+st.divider()
 
-# Referencia de valores UEFA
-with st.expander("Valores de referencia UEFA / FIFA"):
+# ── NIVEL 2: Contexto ────────────────────────────────────────
+st.markdown('<div class="ep-section-title" style="font-size:0.9rem;">Contexto</div>', unsafe_allow_html=True)
+
+col_ctx1, col_ctx2, col_ctx3, col_ctx4 = st.columns(4)
+
+with col_ctx1:
+    col_ctx1.metric("Total lesiones", m["n_total"])
+    col_ctx1.caption(f"{m['dias_baja_total']} días de baja totales")
+
+with col_ctx2:
+    # Ratio visual Partido vs Entrenamiento — barra proporcional en CSS puro
+    total_ctx = max(m["n_partido"] + m["n_entreno"], 1)
+    pct_partido = round(m["n_partido"] / total_ctx * 100)
+    st.markdown("**Partido vs Entrenamiento**")
+    st.markdown(f"""
+    <div style="display:flex; height:10px; border-radius:5px; overflow:hidden; margin:6px 0;">
+        <div style="width:{pct_partido}%; background:#F47920;"></div>
+        <div style="width:{100 - pct_partido}%; background:#2d6a9f;"></div>
+    </div>
+    <div style="font-size:0.78rem; color:#8b92a8;">
+        <span style="color:#F47920;">●</span> Partido: {m['n_partido']} &nbsp;
+        <span style="color:#2d6a9f;">●</span> Entreno: {m['n_entreno']}
+    </div>
+    """, unsafe_allow_html=True)
+
+with col_ctx3:
+    col_ctx3.metric("Severidad media", f"{m['severidad_media']} días")
+    col_ctx3.caption("días de baja por lesión")
+
+with col_ctx4:
+    col_ctx4.metric("Tasa de re-lesión", f"{m['tasa_relesion']} %")
+    col_ctx4.caption(f"{m['n_relesiones']} re-lesión(es) registradas")
+
+st.divider()
+
+# ── NIVEL 3: Detalle técnico (colapsado) ────────────────────
+with st.expander("Ver indicadores completos"):
+    d1, d2, d3 = st.columns(3)
+    d1.metric("Horas-atleta totales",   f"{m['ha_total']:,.0f} HA")
+    d2.metric("Horas-atleta en partido", f"{m['ha_partido']:,.0f} HA")
+    d3.metric("Horas-atleta en entreno", f"{m['ha_entreno']:,.0f} HA")
+
+    st.markdown(" ")
+
+    e1, e2 = st.columns(2)
+    e1.metric("Incidencia en partido", f"{m['inc_partido']}")
+    e1.caption("lesiones / 1000 horas-atleta")
+    e2.metric("Incidencia en entreno", f"{m['inc_entreno']}")
+    e2.caption("lesiones / 1000 horas-atleta")
+
+    st.markdown(" ")
     st.markdown("""
     | Indicador | Referencia UEFA (élite) | Tu plantel |
     |---|---|---|
