@@ -97,7 +97,7 @@ def cargar_todas_lesiones():
         SELECT
             l.id,
             l.jugador_id,
-            j.nombre || ' ' || j.apellido  AS jugador,
+            TRIM(j.nombre || ' ' || j.apellido)  AS jugador,
             j.posicion,
             j.numero_camiseta               AS numero,
             l.fecha_inicio,

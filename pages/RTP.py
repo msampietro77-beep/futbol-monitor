@@ -59,7 +59,7 @@ def cargar_lesionados_activos():
             """
             SELECT l.id      AS lesion_id,
                    l.jugador_id,
-                   j.nombre || ' ' || j.apellido AS jugador,
+                   TRIM(j.nombre || ' ' || j.apellido) AS jugador,
                    j.posicion,
                    j.numero_camiseta            AS numero,
                    l.tipo_lesion,

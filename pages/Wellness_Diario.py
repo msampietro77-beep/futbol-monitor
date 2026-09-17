@@ -86,7 +86,7 @@ def cargar_jugadores():
     conn = _conectar()
     df = pd.read_sql("""
         SELECT id AS jugador_id,
-               nombre || ' ' || apellido AS jugador,
+               TRIM(nombre || ' ' || apellido) AS jugador,
                posicion,
                numero_camiseta AS numero
         FROM jugadores

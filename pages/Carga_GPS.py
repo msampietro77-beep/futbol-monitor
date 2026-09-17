@@ -152,23 +152,30 @@ def _es_team_average(nombre_csv):
 
 def _matchear_por_apellido(nombre_csv, jugadores_df, umbral=UMBRAL_FUZZY_APELLIDO):
     """
-    Fuzzy matching por apellido usando thefuzz. Prueba CADA palabra del
-    nombre del CSV (no solo la última) contra el apellido de cada
-    jugador del plantel, así funciona sin importar si KSport exporta
-    "Nombre Apellido", "Apellido Nombre" o "Apellido, Nombre".
-    Retorna (jugador_id o None, confianza 0-100). Si el mejor puntaje
-    queda por debajo del umbral, retorna jugador_id=None pero igual
-    informa el puntaje del candidato más cercano (para mostrarlo en la
-    previsualización como referencia).
+    Fuzzy matching por apellido usando thefuzz, combinando dos comparaciones:
+      1. Frase completa contra el apellido completo (token_sort_ratio) —
+         necesario para apellidos compuestos reales ("González Metilli").
+      2. Cada palabra del nombre del CSV contra el apellido (ratio) —
+         cubre "Nombre Apellido", "Apellido Nombre", "Apellido, Nombre"
+         e iniciales sueltas ("Fernandez L.").
+    Se toma el mejor puntaje de ambas. Retorna (jugador_id o None,
+    confianza 0-100). Si el mejor puntaje queda por debajo del umbral,
+    retorna jugador_id=None pero igual informa el puntaje del candidato
+    más cercano (para mostrarlo en la previsualización como referencia).
     """
-    palabras_csv = [p.strip(",.") for p in _normalizar_texto(nombre_csv).split()]
-    palabras_csv = [p for p in palabras_csv if p]
+    objetivo = _normalizar_texto(nombre_csv)
+    palabras_csv = [p.strip(",.") for p in objetivo.split() if p.strip(",.")]
     if not palabras_csv:
         return None, 0
 
     mejor_id, mejor_score = None, 0
     for _, jug in jugadores_df.iterrows():
         apellido_jug = _normalizar_texto(jug["apellido"])
+
+        score = fuzz.token_sort_ratio(objetivo, apellido_jug)
+        if score > mejor_score:
+            mejor_score, mejor_id = score, int(jug["id"])
+
         for palabra in palabras_csv:
             score = fuzz.ratio(palabra, apellido_jug)
             if score > mejor_score:

@@ -108,7 +108,7 @@ def _cargar_lesiones():
 def _cargar_jugadores():
     conn = _conectar()
     df = pd.read_sql(
-        "SELECT id, nombre || ' ' || apellido AS nombre, posicion FROM jugadores ORDER BY apellido",
+        "SELECT id, TRIM(nombre || ' ' || apellido) AS nombre, posicion FROM jugadores ORDER BY apellido",
         conn,
     )
     conn.close()

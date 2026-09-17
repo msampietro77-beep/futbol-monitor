@@ -69,7 +69,7 @@ def cargar_carga_interna():
     df = pd.read_sql("""
         SELECT
             ci.jugador_id,
-            j.nombre || ' ' || j.apellido  AS jugador,
+            TRIM(j.nombre || ' ' || j.apellido)  AS jugador,
             j.posicion,
             j.numero_camiseta               AS numero,
             ci.fecha,
@@ -91,7 +91,7 @@ def cargar_wellness():
     df = pd.read_sql("""
         SELECT
             w.jugador_id,
-            j.nombre || ' ' || j.apellido  AS jugador,
+            TRIM(j.nombre || ' ' || j.apellido)  AS jugador,
             j.posicion,
             w.fecha,
             w.fatiga,
@@ -119,7 +119,7 @@ def cargar_lesiones_activas():
     df = pd.read_sql("""
         SELECT
             l.jugador_id,
-            j.nombre || ' ' || j.apellido  AS jugador,
+            TRIM(j.nombre || ' ' || j.apellido)  AS jugador,
             j.posicion,
             l.fecha_inicio,
             l.fecha_fin,
@@ -139,7 +139,7 @@ def cargar_jugadores():
     conn = _conectar()
     df = pd.read_sql("""
         SELECT id, nombre, apellido,
-               nombre || ' ' || apellido AS jugador,
+               TRIM(nombre || ' ' || apellido) AS jugador,
                posicion, numero_camiseta AS numero
         FROM jugadores
         ORDER BY posicion, numero_camiseta
@@ -167,7 +167,7 @@ def cargar_lesiones_todas():
         SELECT
             l.id,
             l.jugador_id,
-            j.nombre || ' ' || j.apellido AS jugador,
+            TRIM(j.nombre || ' ' || j.apellido) AS jugador,
             j.posicion,
             l.fecha_inicio,
             l.fecha_fin,
@@ -654,7 +654,7 @@ def cargar_fuerza_jugador(jugador_id):
         SELECT
             f.id,
             f.jugador_id,
-            j.nombre || ' ' || j.apellido  AS jugador,
+            TRIM(j.nombre || ' ' || j.apellido)  AS jugador,
             j.posicion,
             f.fecha,
             f.ejercicio,
@@ -682,7 +682,7 @@ def cargar_fuerza_plantel():
     df = pd.read_sql("""
         SELECT
             f.jugador_id,
-            j.nombre || ' ' || j.apellido  AS jugador,
+            TRIM(j.nombre || ' ' || j.apellido)  AS jugador,
             j.posicion,
             f.fecha,
             f.ejercicio,
@@ -827,7 +827,7 @@ def cargar_carga_externa():
     df = pd.read_sql("""
         SELECT
             ce.jugador_id,
-            j.nombre || ' ' || j.apellido AS jugador,
+            TRIM(j.nombre || ' ' || j.apellido) AS jugador,
             j.posicion,
             j.numero_camiseta AS numero,
             ce.fecha,
