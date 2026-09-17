@@ -247,7 +247,14 @@ def calcular_metricas(lesiones_df, exposicion_df):
 
 
 def calcular_disponibilidad():
-    """Porcentaje del plantel SIN lesión activa hoy (no es un promedio histórico)."""
+    """
+    Disponibilidad = jugadores SIN lesión activa hoy / total del plantel × 100.
+
+    Nota: la columna que marca una lesión en curso en la tabla
+    `lesiones` se llama `activo` (1 = en curso, 0 = recuperado) — no
+    `en_curso`. Ya filtra por `activo = 1`, así que un jugador
+    recuperado (`activo = 0`) correctamente NO cuenta como lesionado.
+    """
     conn = _conectar()
     total = pd.read_sql("SELECT COUNT(*) AS n FROM jugadores", conn)["n"].iloc[0]
     lesionados = pd.read_sql(
@@ -260,6 +267,37 @@ def calcular_disponibilidad():
     disponibles = total - lesionados
     pct = round(disponibles / total * 100, 1) if total > 0 else 0
     return {"total": total, "disponibles": disponibles, "lesionados": lesionados, "pct": pct}
+
+
+def calcular_disponibilidad_historica(lesiones_df, dias=30):
+    """
+    Reconstruye la disponibilidad día por día de los últimos `dias` días
+    a partir de los rangos de fecha de las lesiones que ya están en la
+    base (fecha_inicio → fecha_fin, o hasta hoy si la lesión sigue en
+    curso). No hace falta simular una tabla aparte: la variación diaria
+    sale sola de las lesiones ya cargadas, que tienen fechas de inicio
+    repartidas en los últimos 90 días.
+    """
+    conn = _conectar()
+    total = int(pd.read_sql("SELECT COUNT(*) AS n FROM jugadores", conn)["n"].iloc[0])
+    conn.close()
+
+    hoy = pd.Timestamp.today().normalize()
+    fechas = [hoy - pd.Timedelta(days=i) for i in range(dias - 1, -1, -1)]
+
+    # Fin efectivo de cada lesión: la fecha de alta real, o "hoy" si sigue en curso
+    fin_efectivo = lesiones_df["fecha_fin"].fillna(hoy)
+
+    filas = []
+    for fecha in fechas:
+        en_curso_ese_dia = lesiones_df[
+            (lesiones_df["fecha_inicio"] <= fecha) & (fin_efectivo >= fecha)
+        ]["jugador_id"].nunique()
+        disponibles = total - en_curso_ese_dia
+        pct = round(disponibles / total * 100, 1) if total > 0 else 0
+        filas.append({"fecha": fecha, "pct": pct, "lesionados": int(en_curso_ese_dia)})
+
+    return pd.DataFrame(filas)
 
 
 def calcular_tendencia_carga_lesional(lesiones_df):
@@ -335,6 +373,7 @@ exposicion_df = cargar_exposicion()
 m             = calcular_metricas(lesiones_df, exposicion_df)
 disp          = calcular_disponibilidad()
 delta_carga   = calcular_tendencia_carga_lesional(lesiones_df)
+disp_hist_df  = calcular_disponibilidad_historica(lesiones_df, dias=30)
 
 
 # ============================================================
@@ -357,6 +396,149 @@ st.divider()
 
 st.markdown('<div class="ep-badge ep-badge-medico">Medico</div>', unsafe_allow_html=True)
 st.markdown('<div class="ep-section-title">Indicadores Epidemiológicos Principales</div>', unsafe_allow_html=True)
+
+# ── HERO: Disponibilidad — el KPI protagonista de la página ─
+# Va arriba de todo, antes incluso del semáforo de situación
+# general, porque es el número que más le importa al staff técnico
+# de un vistazo: "¿con cuántos jugadores contamos hoy?"
+st.markdown(f"""
+<div class="ep-card" style="text-align:center; padding:28px 24px;">
+    <div style="color:#8b92a8; font-size:0.85rem; text-transform:uppercase; letter-spacing:1.5px;">
+        Disponibilidad del plantel
+    </div>
+    <div style="color:#F47920; font-size:3.4rem; font-weight:700; margin:8px 0 2px 0;">
+        {disp['pct']}%
+    </div>
+    <div style="color:#8b92a8; font-size:0.95rem;">
+        {disp['disponibles']} de {disp['total']} jugadores disponibles
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+col_gauge, col_hist = st.columns([1, 1.6])
+
+with col_gauge:
+    # Gauge semicircular: aguja principal (valor actual) + aguja fina
+    # estática en 90% que marca el objetivo del plantel.
+    option_disp_gauge = {
+        **_EP_ANIM,
+        "series": [
+            {
+                "type": "gauge",
+                "startAngle": 180, "endAngle": 0,
+                "min": 0, "max": 100,
+                "radius": "95%",
+                "center": ["50%", "75%"],
+                "progress": {"show": False},
+                "axisLine": {
+                    "lineStyle": {
+                        "width": 16,
+                        "color": [
+                            [0.75, "#d63031"],   # rojo    0-75 %
+                            [0.90, "#F47920"],   # naranja 75-90 %
+                            [1.00, "#1a9e5c"],   # verde   90-100 %
+                        ],
+                    },
+                },
+                "pointer": {"itemStyle": {"color": "#f0f2f6"}, "width": 5, "length": "55%"},
+                "anchor": {"show": True, "size": 10, "itemStyle": {"color": "#f0f2f6"}},
+                "axisTick": {"distance": -16, "length": 4, "lineStyle": {"color": "#161824", "width": 1}},
+                "splitLine": {"distance": -16, "length": 14, "lineStyle": {"color": "#161824", "width": 2}},
+                "axisLabel": {
+                    "distance": 20, "fontSize": 10, "color": "#8b92a8", "fontFamily": _EP_FONT,
+                    "formatter": "{value}",
+                },
+                "title": {"show": False},
+                "detail": {"show": False},
+                "data": [{"value": disp["pct"]}],
+            },
+            {
+                # Marca de objetivo (90 %): aguja fina y estática, sin anillo propio
+                "type": "gauge",
+                "startAngle": 180, "endAngle": 0,
+                "min": 0, "max": 100,
+                "radius": "95%",
+                "center": ["50%", "75%"],
+                "pointer": {"show": True, "length": "68%", "width": 2, "itemStyle": {"color": "#8b92a8"}},
+                "anchor": {"show": False},
+                "axisLine": {"show": False},
+                "axisTick": {"show": False},
+                "splitLine": {"show": False},
+                "axisLabel": {"show": False},
+                "progress": {"show": False},
+                "title": {"show": False},
+                "detail": {"show": False},
+                "data": [{"value": 90}],
+            },
+        ],
+    }
+    st_echarts(options=option_disp_gauge, height="200px")
+    st.markdown(
+        "<p style='text-align:center; color:#8b92a8; font-size:0.8rem; margin-top:-10px;'>"
+        "Objetivo: 90 % (aguja gris)</p>",
+        unsafe_allow_html=True,
+    )
+
+with col_hist:
+    # Evolución diaria de la disponibilidad — últimos 30 días
+    _fechas_disp = [f.strftime("%d/%m") for f in disp_hist_df["fecha"]]
+
+    option_disp_hist = {
+        **_EP_ANIM,
+        "tooltip": {
+            **_EP_TOOLTIP,
+            "trigger": "axis",
+            "formatter": JsCode("""
+function (params) {
+    var p = params[0];
+    return '<b>' + p.axisValueLabel + '</b><br/>' +
+           'Disponibilidad: <b>' + p.value.toFixed(1) + '%</b><br/>' +
+           'Jugadores lesionados: <b>' + p.data.lesionados + '</b>';
+}
+"""),
+        },
+        "grid": {"top": 20, "bottom": 40, "left": 45, "right": 20},
+        "xAxis": {
+            "type": "category",
+            "data": _fechas_disp,
+            "axisLabel": {"fontSize": 10, "color": "#8b92a8", "rotate": 30, "fontFamily": _EP_FONT},
+            "axisLine": {"show": False}, "axisTick": {"show": False}, "splitLine": {"show": False},
+        },
+        "yAxis": {
+            "type": "value", "min": 0, "max": 100,
+            "axisLabel": {"color": "#8b92a8", "fontSize": 10, "fontFamily": _EP_FONT, "formatter": "{value}%"},
+            "axisLine": {"show": False}, "axisTick": {"show": False},
+            "splitLine": {"lineStyle": {"color": "#2d3148", "width": 1}},
+        },
+        "series": [{
+            "type": "line",
+            "data": [
+                {"value": r["pct"], "lesionados": r["lesionados"]}
+                for _, r in disp_hist_df.iterrows()
+            ],
+            "smooth": 0.2,
+            "symbol": "circle", "symbolSize": 5,
+            "lineStyle": {"color": "#F47920", "width": 2.5},
+            "itemStyle": {"color": "#F47920"},
+            "areaStyle": {"color": "#F47920", "opacity": 0.15},
+            "markLine": {
+                "symbol": ["none", "none"],
+                "silent": True,
+                "lineStyle": {"type": "dashed", "color": "#8b92a8", "width": 1.5},
+                "label": {"formatter": "Objetivo 90%", "color": "#8b92a8", "fontSize": 10},
+                "data": [{"yAxis": 90}],
+            },
+            "markArea": {
+                "silent": True,
+                "itemStyle": {"color": "rgba(214,48,49,0.10)"},
+                "data": [[{"yAxis": 0}, {"yAxis": 75}]],
+            },
+        }],
+    }
+    st_echarts(options=option_disp_hist, height="220px")
+    st.caption("Evolución de la disponibilidad — últimos 30 días")
+
+st.divider()
 
 # ── Semáforo de estado general ──────────────────────────────
 # Mismo umbral que el KPI de incidencia (nivel 1), para que la
@@ -393,16 +575,9 @@ def _kpi_card(etiqueta, valor, color_valor, subtexto, color_subtexto="#8b92a8"):
     """
 
 
-# ── NIVEL 1: KPIs críticos ──────────────────────────────────
-col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
-
-with col_kpi1:
-    st.markdown(_kpi_card(
-        "Disponibilidad actual",
-        f"{disp['pct']}%",
-        "#F47920",
-        f"{disp['disponibles']} / {disp['total']} jugadores sin lesión",
-    ), unsafe_allow_html=True)
+# ── NIVEL 1: KPIs críticos restantes ─────────────────────────
+# (la disponibilidad ya se mostró arriba, como hero de la página)
+col_kpi2, col_kpi3 = st.columns(2)
 
 with col_kpi2:
     st.markdown(_kpi_card(
