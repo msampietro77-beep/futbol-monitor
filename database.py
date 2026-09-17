@@ -41,36 +41,44 @@ np.random.seed(42)
 # DATOS DEL PLANTEL (25 JUGADORES)
 # ============================================================
 
+
+# Nombres reales extraídos de exports de KSport (ver reset_jugadores.py
+# para el detalle de qué archivos se usaron). Los CSV de KSport solo
+# traen un identificador de apellido (a veces con inicial
+# desambiguadora, ej. "Sánchez A."), sin nombre de pila separado — por
+# eso "nombre" queda vacío y "apellido" tiene el identificador
+# completo. TRIM(nombre || ' ' || apellido) en las consultas evita que
+# quede un espacio suelto adelante.
 JUGADORES = [
     # --- 4 Porteros ---
-    {"nombre": "Carlos",    "apellido": "Méndez",    "posicion": "portero",       "numero": 1},
-    {"nombre": "Fabio",     "apellido": "Rossi",     "posicion": "portero",       "numero": 13},
-    {"nombre": "Diego",     "apellido": "Vargas",    "posicion": "portero",       "numero": 26},
-    {"nombre": "Andrés",    "apellido": "Pereira",   "posicion": "portero",       "numero": 33},
+    {"nombre": "", "apellido": "Benítez",          "posicion": "portero",       "numero": 1},
+    {"nombre": "", "apellido": "Fernández",        "posicion": "portero",       "numero": 13},
+    {"nombre": "", "apellido": "López L.",         "posicion": "portero",       "numero": 26},
+    {"nombre": "", "apellido": "Maldonado",        "posicion": "portero",       "numero": 33},
     # --- 8 Defensores ---
-    {"nombre": "Lucas",     "apellido": "Fernández", "posicion": "defensor",      "numero": 2},
-    {"nombre": "Martín",    "apellido": "González",  "posicion": "defensor",      "numero": 3},
-    {"nombre": "Sebastián", "apellido": "Torres",    "posicion": "defensor",      "numero": 4},
-    {"nombre": "Pablo",     "apellido": "Ramírez",   "posicion": "defensor",      "numero": 5},
-    {"nombre": "Nicolás",   "apellido": "López",     "posicion": "defensor",      "numero": 6},
-    {"nombre": "Emilio",    "apellido": "Castro",    "posicion": "defensor",      "numero": 12},
-    {"nombre": "Rodrigo",   "apellido": "Suárez",    "posicion": "defensor",      "numero": 14},
-    {"nombre": "Hernán",    "apellido": "Ortega",    "posicion": "defensor",      "numero": 15},
+    {"nombre": "", "apellido": "Morales",          "posicion": "defensor",      "numero": 2},
+    {"nombre": "", "apellido": "Rigoni",           "posicion": "defensor",      "numero": 3},
+    {"nombre": "", "apellido": "Sánchez A.",       "posicion": "defensor",      "numero": 4},
+    {"nombre": "", "apellido": "Spörle",           "posicion": "defensor",      "numero": 5},
+    {"nombre": "", "apellido": "Vázquez",          "posicion": "defensor",      "numero": 6},
+    {"nombre": "", "apellido": "Zelarayán L.",     "posicion": "defensor",      "numero": 12},
+    {"nombre": "", "apellido": "Castro T.",        "posicion": "defensor",      "numero": 14},
+    {"nombre": "", "apellido": "Falcón",           "posicion": "defensor",      "numero": 15},
     # --- 8 Mediocampistas ---
-    {"nombre": "Javier",    "apellido": "Morales",   "posicion": "mediocampista", "numero": 7},
-    {"nombre": "Felipe",    "apellido": "Silva",     "posicion": "mediocampista", "numero": 8},
-    {"nombre": "Ricardo",   "apellido": "Díaz",      "posicion": "mediocampista", "numero": 10},
-    {"nombre": "Eduardo",   "apellido": "Ruiz",      "posicion": "mediocampista", "numero": 16},
-    {"nombre": "Tomás",     "apellido": "Herrera",   "posicion": "mediocampista", "numero": 17},
-    {"nombre": "Germán",    "apellido": "Navarro",   "posicion": "mediocampista", "numero": 18},
-    {"nombre": "Cristian",  "apellido": "Vega",      "posicion": "mediocampista", "numero": 19},
-    {"nombre": "Santiago",  "apellido": "Ramos",     "posicion": "mediocampista", "numero": 20},
+    {"nombre": "", "apellido": "González Metilli", "posicion": "mediocampista", "numero": 7},
+    {"nombre": "", "apellido": "Gutierrez",        "posicion": "mediocampista", "numero": 8},
+    {"nombre": "", "apellido": "Hernándes R.",     "posicion": "mediocampista", "numero": 10},
+    {"nombre": "", "apellido": "Longo",            "posicion": "mediocampista", "numero": 16},
+    {"nombre": "", "apellido": "Lucco J.",         "posicion": "mediocampista", "numero": 17},
+    {"nombre": "", "apellido": "Mavilla",          "posicion": "mediocampista", "numero": 18},
+    {"nombre": "", "apellido": "Melano",           "posicion": "mediocampista", "numero": 19},
+    {"nombre": "", "apellido": "Ocampo",           "posicion": "mediocampista", "numero": 20},
     # --- 5 Delanteros ---
-    {"nombre": "Alexis",    "apellido": "Muñoz",     "posicion": "delantero",     "numero": 9},
-    {"nombre": "Bruno",     "apellido": "Acosta",    "posicion": "delantero",     "numero": 11},
-    {"nombre": "Gabriel",   "apellido": "Reyes",     "posicion": "delantero",     "numero": 21},
-    {"nombre": "Mateo",     "apellido": "Flores",    "posicion": "delantero",     "numero": 22},
-    {"nombre": "Daniel",    "apellido": "Aguirre",   "posicion": "delantero",     "numero": 23},
+    {"nombre": "", "apellido": "Passerini",        "posicion": "delantero",     "numero": 9},
+    {"nombre": "", "apellido": "Reyna",            "posicion": "delantero",     "numero": 11},
+    {"nombre": "", "apellido": "Ricca",            "posicion": "delantero",     "numero": 21},
+    {"nombre": "", "apellido": "Tulián",           "posicion": "delantero",     "numero": 22},
+    {"nombre": "", "apellido": "Zelarayán G.",     "posicion": "delantero",     "numero": 23},
 ]
 
 

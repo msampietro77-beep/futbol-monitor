@@ -1,11 +1,17 @@
 """
 reset_jugadores.py
 ===================
-Reemplaza los 25 jugadores simulados de la base por nombres reales
-extraídos de exports de KSport, manteniendo cada fila (mismo id,
-posición y número de camiseta) — solo cambia nombre/apellido.
+Sincroniza una base YA EXISTENTE (con los 25 jugadores viejos, simulados
+o de una corrida anterior) con los nombres reales que están en
+`database.JUGADORES` — manteniendo cada fila (mismo id, posición y
+número de camiseta), solo cambia nombre/apellido.
 
-Fuente de los nombres:
+Nota: en una base NUEVA no hace falta correr este script — alcanza con
+`python database.py`, porque `JUGADORES` en database.py ya tiene los
+nombres reales. Este script es para las bases que ya estaban creadas
+antes de ese cambio (por ejemplo, la que tenías corriendo local).
+
+Fuente de los nombres reales (ver database.py, lista JUGADORES):
   El archivo pedido originalmente (2026_09_03_Full_Training_Grupo_1.csv)
   no está en el equipo — se usó el "Full Training" más reciente que sí
   hay guardado, combinando sus dos grupos (25 jugadores en total,
@@ -23,8 +29,8 @@ Fuente de los nombres:
   Los CSV de GPS no traen la posición de cada jugador, así que la
   asignación a las 25 filas (portero/defensor/mediocampista/delantero)
   es simplemente en el orden en que aparecen en los archivos — si
-  sabés qué jugador real va en qué puesto, reordená APELLIDOS_REALES
-  antes de correr el script.
+  sabés qué jugador real va en qué puesto, reordená la lista JUGADORES
+  en database.py antes de correr este script.
 
 Como el jugador_id NO cambia, todo el historial de lesiones sigue
 siendo válido (las lesiones ya cargadas van a aparecer con el nombre
@@ -43,29 +49,9 @@ import sqlite3
 import os
 import pandas as pd
 
-import database  # reutiliza las funciones de simulación ya existentes
+import database  # reutiliza JUGADORES y las funciones de simulación ya existentes
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "futbol_monitoreo.db")
-
-
-# ============================================================
-# NOMBRES REALES (KSport, sin "Team Average"), 25 en total
-# Orden: 4 porteros, 8 defensores, 8 mediocampistas, 5 delanteros
-# (mismo orden de posiciones que ya tienen las 25 filas en la base)
-# ============================================================
-
-APELLIDOS_REALES = [
-    # --- Porteros (4) ---
-    "Benítez", "Fernández", "López L.", "Maldonado",
-    # --- Defensores (8) ---
-    "Morales", "Rigoni", "Sánchez A.", "Spörle",
-    "Vázquez", "Zelarayán L.", "Castro T.", "Falcón",
-    # --- Mediocampistas (8) ---
-    "González Metilli", "Gutierrez", "Hernándes R.", "Longo",
-    "Lucco J.", "Mavilla", "Melano", "Ocampo",
-    # --- Delanteros (5) ---
-    "Passerini", "Reyna", "Ricca", "Tulián", "Zelarayán G.",
-]
 
 
 def reset_jugadores():
@@ -74,18 +60,18 @@ def reset_jugadores():
 
     ids = [fila[0] for fila in cur.execute("SELECT id FROM jugadores ORDER BY id").fetchall()]
 
-    if len(ids) != len(APELLIDOS_REALES):
+    if len(ids) != len(database.JUGADORES):
         conn.close()
         raise SystemExit(
-            f"La base tiene {len(ids)} jugadores pero hay {len(APELLIDOS_REALES)} "
-            "nombres reales cargados en el script. Revisá APELLIDOS_REALES antes de continuar."
+            f"La base tiene {len(ids)} jugadores pero database.JUGADORES tiene "
+            f"{len(database.JUGADORES)}. Revisá la lista antes de continuar."
         )
 
     print("Renombrando jugadores (se mantiene id, posición y número)...")
-    for jugador_id, apellido_real in zip(ids, APELLIDOS_REALES):
+    for jugador_id, jug in zip(ids, database.JUGADORES):
         cur.execute(
-            "UPDATE jugadores SET nombre = '', apellido = ? WHERE id = ?",
-            (apellido_real, jugador_id),
+            "UPDATE jugadores SET nombre = ?, apellido = ? WHERE id = ?",
+            (jug["nombre"], jug["apellido"], jugador_id),
         )
     conn.commit()
     print(f"  [OK] {len(ids)} jugadores renombrados")
