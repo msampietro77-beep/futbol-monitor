@@ -330,6 +330,21 @@ def crear_tablas(conn):
         )
     """)
 
+    # Mapeo aprendido nombre-del-CSV → jugador del plantel.
+    # Cuando el preparador corrige un match a mano en el módulo de Carga
+    # GPS, se guarda acá para que la próxima importación del mismo CSV
+    # (mismo nombre real de KSport) matchee sola sin volver a preguntar.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS csv_player_mapping (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre_csv           TEXT    NOT NULL UNIQUE,  -- normalizado: sin tildes, minúsculas
+            nombre_csv_original  TEXT,                     -- tal cual vino la primera vez (referencia)
+            jugador_id           INTEGER NOT NULL,
+            fecha_actualizacion  TEXT    DEFAULT (datetime('now')),
+            FOREIGN KEY (jugador_id) REFERENCES jugadores(id)
+        )
+    """)
+
     conn.commit()
     print("  [OK] Tablas creadas")
 

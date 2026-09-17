@@ -3,10 +3,16 @@ pages/Carga_GPS.py
 ===================
 Módulo de carga externa (datos GPS). Dos formas de cargar datos:
 
-  Tab 1 — Importar CSV KSport: sube el export del GPS (separado por ';'),
-          matchea automáticamente el nombre de cada jugador contra el
-          plantel, muestra una previsualización editable (por si algún
-          match automático está mal) y guarda todo al confirmar.
+  Tab 1 — Importar CSV KSport: sube el export del GPS (separado por ';').
+          El plantel de la base es simulado (nombres inventados) pero el
+          CSV trae nombres reales, así que el matcheo de jugador usa:
+            1. Mapeo guardado de importaciones anteriores (exacto).
+            2. Fuzzy matching por apellido (thefuzz), sin importar el
+               orden nombre/apellido ni tildes o mayúsculas.
+            3. Si no hay match confiable, lo elige el preparador a mano
+               en la previsualización — y esa corrección se guarda para
+               la próxima vez.
+          La fila "Team Average" que trae KSport se ignora sola.
 
   Tab 2 — Carga manual: formulario con las métricas core, para los días
           en que no hay datos de GPS disponibles.
@@ -28,10 +34,15 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 from datetime import date
+from thefuzz import fuzz
 
 from metricas import cargar_jugadores, cargar_carga_externa
 import auth
 from styles import apply_styles
+
+# Umbral de confianza (0-100) del fuzzy matching por apellido.
+# Por debajo de esto, el jugador queda "sin match" y se pide corrección manual.
+UMBRAL_FUZZY_APELLIDO = 80
 
 
 # ============================================================
@@ -115,6 +126,15 @@ COLUMNAS_METRICAS_KSPORT = [v for k, v in MAPEO_COLUMNAS_KSPORT.items() if k != 
 
 # ============================================================
 # MATCHEO AUTOMÁTICO DE JUGADOR (nombre del CSV → plantel)
+#
+# Orden de prioridad:
+#   1. Mapeo guardado (csv_player_mapping) — importaciones anteriores
+#      donde el preparador ya corrigió este mismo nombre a mano.
+#   2. Fuzzy matching por apellido (thefuzz) — el CSV de KSport trae
+#      nombres reales ("Benítez", "Fernández") que no coinciden con el
+#      plantel simulado, así que comparamos cada palabra del nombre
+#      contra el apellido de cada jugador, con similitud aproximada.
+#   3. Sin match → lo resuelve el preparador a mano en la previsualización.
 # ============================================================
 
 def _normalizar_texto(s):
@@ -124,30 +144,87 @@ def _normalizar_texto(s):
     return " ".join(s.split())
 
 
-def _matchear_jugador(nombre_csv, jugadores_df):
-    """
-    Compara el nombre tal como viene en el CSV contra "nombre apellido"
-    de cada jugador del plantel (sin importar tildes, mayúsculas ni el
-    orden de las palabras). Retorna (jugador_id o None, confianza 0-100).
-    """
+def _es_team_average(nombre_csv):
+    """KSport agrega una fila de resumen del equipo que hay que ignorar."""
     objetivo = _normalizar_texto(nombre_csv)
-    palabras_objetivo = set(objetivo.split())
-    if not palabras_objetivo:
+    return "average" in objetivo or objetivo in ("team", "total", "")
+
+
+def _matchear_por_apellido(nombre_csv, jugadores_df, umbral=UMBRAL_FUZZY_APELLIDO):
+    """
+    Fuzzy matching por apellido usando thefuzz. Prueba CADA palabra del
+    nombre del CSV (no solo la última) contra el apellido de cada
+    jugador del plantel, así funciona sin importar si KSport exporta
+    "Nombre Apellido", "Apellido Nombre" o "Apellido, Nombre".
+    Retorna (jugador_id o None, confianza 0-100). Si el mejor puntaje
+    queda por debajo del umbral, retorna jugador_id=None pero igual
+    informa el puntaje del candidato más cercano (para mostrarlo en la
+    previsualización como referencia).
+    """
+    palabras_csv = [p.strip(",.") for p in _normalizar_texto(nombre_csv).split()]
+    palabras_csv = [p for p in palabras_csv if p]
+    if not palabras_csv:
         return None, 0
 
     mejor_id, mejor_score = None, 0
     for _, jug in jugadores_df.iterrows():
-        nombre_completo = _normalizar_texto(f"{jug['nombre']} {jug['apellido']}")
-        if objetivo == nombre_completo:
-            return int(jug["id"]), 100
+        apellido_jug = _normalizar_texto(jug["apellido"])
+        for palabra in palabras_csv:
+            score = fuzz.ratio(palabra, apellido_jug)
+            if score > mejor_score:
+                mejor_score, mejor_id = score, int(jug["id"])
 
-        palabras_jugador = set(nombre_completo.split())
-        interseccion = palabras_objetivo & palabras_jugador
-        score = round(len(interseccion) / max(len(palabras_objetivo), len(palabras_jugador)) * 100)
-        if score > mejor_score:
-            mejor_score, mejor_id = score, int(jug["id"])
+    if mejor_score >= umbral:
+        return mejor_id, mejor_score
+    return None, mejor_score
 
-    return mejor_id, mejor_score
+
+def cargar_mapeo_csv():
+    """Carga el mapeo nombre_csv → jugador_id aprendido en importaciones anteriores."""
+    conn = _conectar()
+    try:
+        df = pd.read_sql("SELECT nombre_csv, jugador_id FROM csv_player_mapping", conn)
+    except Exception:
+        df = pd.DataFrame(columns=["nombre_csv", "jugador_id"])
+    conn.close()
+    return df
+
+
+def guardar_mapeo_csv(nombre_csv_original, jugador_id):
+    """
+    Guarda (o actualiza) el mapeo nombre_csv → jugador_id para que la
+    próxima importación de KSport con ese mismo nombre matchee sola.
+    """
+    conn = _conectar()
+    nombre_normalizado = _normalizar_texto(nombre_csv_original)
+    conn.execute("""
+        INSERT INTO csv_player_mapping (nombre_csv, nombre_csv_original, jugador_id, fecha_actualizacion)
+        VALUES (?, ?, ?, datetime('now'))
+        ON CONFLICT(nombre_csv) DO UPDATE SET
+            jugador_id = excluded.jugador_id,
+            fecha_actualizacion = excluded.fecha_actualizacion
+    """, (nombre_normalizado, nombre_csv_original, jugador_id))
+    conn.commit()
+    conn.close()
+
+
+def _resolver_match(nombre_csv, jugadores_df, mapeo_dict):
+    """
+    Resuelve el jugador_id de un nombre del CSV siguiendo el orden de
+    prioridad: mapeo guardado → fuzzy por apellido → sin match.
+    Retorna (jugador_id o None, confianza 0-100, origen).
+    origen: "mapeo" | "apellido" | "sin_match"
+    """
+    nombre_normalizado = _normalizar_texto(nombre_csv)
+
+    if nombre_normalizado in mapeo_dict:
+        return mapeo_dict[nombre_normalizado], 100, "mapeo"
+
+    jug_id, score = _matchear_por_apellido(nombre_csv, jugadores_df)
+    if jug_id is not None:
+        return jug_id, score, "apellido"
+
+    return None, score, "sin_match"
 
 
 # ============================================================
@@ -246,11 +323,34 @@ tab_csv, tab_manual = st.tabs(["Importar CSV KSport", "Carga manual"])
 # TAB 1 — IMPORTAR CSV KSPORT
 # ============================================================
 
+_COLOR_ESTADO = {
+    # estado: (color de texto/borde, color de fondo)
+    "automatico": ("#1a9e5c", "rgba(26,158,92,0.15)"),
+    "manual":     ("#e8a020", "rgba(232,160,32,0.15)"),
+    "sin_match":  ("#d63031", "rgba(214,48,49,0.15)"),
+}
+
+_ETIQUETA_ORIGEN = {
+    "mapeo":     "mapeo guardado",
+    "apellido":  "apellido",
+    "sin_match": "sin match",
+}
+
+
+def _badge_estado(texto, estado):
+    color, fondo = _COLOR_ESTADO.get(estado, ("#888888", "rgba(136,136,136,0.15)"))
+    return (
+        f'<div style="background:{fondo}; border-left:3px solid {color}; '
+        f'color:{color}; padding:5px 10px; border-radius:0 4px 4px 0; '
+        f'font-weight:600; font-size:0.85rem;">{texto}</div>'
+    )
+
+
 with tab_csv:
     st.markdown('<div class="ep-section-title">Importar sesión desde CSV</div>', unsafe_allow_html=True)
     st.caption(
         "El archivo debe venir separado por punto y coma (;), tal como lo exporta KSport. "
-        "Los decimales se leen con coma (formato europeo)."
+        "Los decimales se leen con coma (formato europeo). La fila 'Team Average' se ignora sola."
     )
 
     col_fecha, col_tipo = st.columns([1, 2])
@@ -279,92 +379,139 @@ with tab_csv:
                 "El CSV no tiene el formato esperado de KSport. Faltan estas columnas: "
                 + ", ".join(columnas_faltantes)
             )
-        elif df_csv.empty:
-            st.warning("El archivo no tiene filas de datos.")
         else:
             df_csv = df_csv.rename(columns=MAPEO_COLUMNAS_KSPORT)
 
-            # ── Matcheo automático + previsualización editable ──────
-            id_a_nombre = {
-                int(row["id"]): f"#{int(row['numero'])} {row['jugador']}"
-                for _, row in jugadores_df.iterrows()
-            }
-            nombre_a_id = {v: k for k, v in id_a_nombre.items()}
-            opciones_nombres = ["(sin match)"] + sorted(id_a_nombre.values())
+            # Ignorar la fila de resumen "Team Average" que trae KSport
+            df_csv = df_csv[~df_csv["player_csv"].apply(_es_team_average)].reset_index(drop=True)
 
-            filas_preview = []
-            for idx, fila_csv in df_csv.iterrows():
-                jug_id, score = _matchear_jugador(fila_csv["player_csv"], jugadores_df)
-                nombre_sugerido = id_a_nombre.get(jug_id, "(sin match)") if score >= 60 else "(sin match)"
-                filas_preview.append({
-                    "idx_csv":          idx,
-                    "Jugador CSV":      fila_csv["player_csv"],
-                    "Jugador plantel":  nombre_sugerido,
-                    "Confianza %":      score,
-                    "Minutos":          fila_csv.get("minutes"),
-                    "Distancia (m)":    fila_csv.get("distance"),
-                    "D_SHI (m)":        fila_csv.get("d_shi"),
-                    "RPE":              fila_csv.get("rpe"),
-                    "Imbalance (%)":    fila_csv.get("imbalance"),
-                })
-
-            preview_df = pd.DataFrame(filas_preview)
-            n_sin_match = int((preview_df["Jugador plantel"] == "(sin match)").sum())
-
-            if n_sin_match:
-                st.warning(
-                    f"{n_sin_match} jugador(es) del CSV no se pudieron matchear automáticamente. "
-                    "Corregilos en la columna 'Jugador plantel' antes de importar."
-                )
+            if df_csv.empty:
+                st.warning("El archivo no tiene filas de jugadores (solo la fila de resumen del equipo, si la tenía).")
             else:
-                st.success(f"Los {len(preview_df)} jugadores del CSV se matchearon automáticamente con el plantel.")
+                id_a_nombre = {
+                    int(row["id"]): f"#{int(row['numero'])} {row['jugador']}"
+                    for _, row in jugadores_df.iterrows()
+                }
+                nombre_a_id = {v: k for k, v in id_a_nombre.items()}
+                opciones_nombres = ["(sin match)"] + sorted(id_a_nombre.values())
 
-            st.markdown("**Revisión antes de importar** — corregí el jugador si el match automático está mal:")
+                # Identificador del archivo subido, para saber si es uno nuevo
+                # (si es el mismo, no queremos pisar las correcciones manuales
+                # que el preparador ya hizo en esta sesión).
+                id_archivo = f"{archivo.name}_{archivo.size}"
 
-            preview_editado = st.data_editor(
-                preview_df,
-                column_config={
-                    "Jugador CSV":     st.column_config.TextColumn(disabled=True),
-                    "Jugador plantel": st.column_config.SelectboxColumn(options=opciones_nombres, required=True),
-                    "Confianza %":     st.column_config.NumberColumn(disabled=True),
-                    "Minutos":         st.column_config.NumberColumn(disabled=True, format="%.0f"),
-                    "Distancia (m)":   st.column_config.NumberColumn(disabled=True, format="%.0f"),
-                    "D_SHI (m)":       st.column_config.NumberColumn(disabled=True, format="%.0f"),
-                    "RPE":             st.column_config.NumberColumn(disabled=True, format="%.1f"),
-                    "Imbalance (%)":   st.column_config.NumberColumn(disabled=True, format="%.1f"),
-                },
-                column_order=["Jugador CSV", "Jugador plantel", "Confianza %",
-                              "Minutos", "Distancia (m)", "D_SHI (m)", "RPE", "Imbalance (%)"],
-                hide_index=True,
-                width="stretch",
-                key="editor_preview_gps",
-            )
+                if st.session_state.get("gps_archivo_id") != id_archivo:
+                    mapeo_df = cargar_mapeo_csv()
+                    mapeo_dict = dict(zip(mapeo_df["nombre_csv"], mapeo_df["jugador_id"]))
 
-            if st.button("Importar sesión", type="primary", use_container_width=True):
-                filas_validas = preview_editado[preview_editado["Jugador plantel"] != "(sin match)"]
-                n_invalidas = len(preview_editado) - len(filas_validas)
+                    matches = []
+                    for idx, fila_csv in df_csv.iterrows():
+                        nombre_csv = fila_csv["player_csv"]
+                        jug_id, score, origen = _resolver_match(nombre_csv, jugadores_df, mapeo_dict)
+                        matches.append({
+                            "idx_csv": idx,
+                            "nombre_csv": nombre_csv,
+                            "jugador_id": jug_id,
+                            "score": score,
+                            "estado": "sin_match" if jug_id is None else "automatico",
+                            "origen": origen,
+                        })
 
-                if filas_validas.empty:
-                    st.error("Ningún jugador quedó matcheado. Revisá la columna 'Jugador plantel'.")
-                else:
-                    filas_finales = []
-                    for _, fila_prev in filas_validas.iterrows():
-                        fila_original = df_csv.loc[fila_prev["idx_csv"]]
-                        datos = {c: fila_original.get(c) for c in COLUMNAS_METRICAS_KSPORT}
-                        datos["jugador_id"] = nombre_a_id[fila_prev["Jugador plantel"]]
-                        datos["jugador_csv"] = fila_prev["Jugador CSV"]
-                        filas_finales.append(datos)
+                    st.session_state["gps_matches"] = matches
+                    st.session_state["gps_archivo_id"] = id_archivo
 
-                    n_guardados = guardar_carga_externa(
-                        pd.DataFrame(filas_finales), str(fecha_import), tipo_import, "csv_ksport"
+                matches = st.session_state["gps_matches"]
+
+                n_auto = sum(1 for m in matches if m["estado"] == "automatico")
+                n_sin_match = sum(1 for m in matches if m["estado"] == "sin_match")
+                st.info(
+                    f"{len(matches)} jugador(es) en el CSV — {n_auto} matcheados automáticamente, "
+                    f"{n_sin_match} necesitan corrección manual."
+                )
+
+                st.markdown("**Revisión antes de importar** — corregí el jugador si el match automático está mal:")
+
+                enc = st.columns([2.2, 2.2, 1, 2.2])
+                enc[0].markdown("**Nombre en CSV**")
+                enc[1].markdown("**Jugador matcheado**")
+                enc[2].markdown("**Confianza**")
+                enc[3].markdown("**Corregir**")
+
+                for i, m in enumerate(matches):
+                    c1, c2, c3, c4 = st.columns([2.2, 2.2, 1, 2.2])
+                    c1.write(m["nombre_csv"])
+
+                    nombre_actual = id_a_nombre.get(m["jugador_id"], "(sin match)")
+                    texto_badge = nombre_actual if m["jugador_id"] is not None else "Sin match"
+                    if m["estado"] == "automatico":
+                        texto_badge += f" · {_ETIQUETA_ORIGEN[m['origen']]}"
+                    c2.markdown(_badge_estado(texto_badge, m["estado"]), unsafe_allow_html=True)
+
+                    c3.write(f"{m['score']}%")
+
+                    indice_actual = (
+                        opciones_nombres.index(nombre_actual) if nombre_actual in opciones_nombres else 0
                     )
-                    st.cache_data.clear()
-                    st.success(
-                        f"{n_guardados} jugador(es) importados correctamente para el "
-                        f"{fecha_import.strftime('%d/%m/%Y')}."
+                    opcion_elegida = c4.selectbox(
+                        " ", opciones_nombres, index=indice_actual,
+                        key=f"sel_match_gps_{i}", label_visibility="collapsed",
                     )
-                    if n_invalidas:
-                        st.warning(f"{n_invalidas} jugador(es) del CSV quedaron sin importar por falta de match.")
+                    id_elegido = nombre_a_id.get(opcion_elegida)
+
+                    if id_elegido != m["jugador_id"]:
+                        # El preparador corrigió (o completó) el match a mano
+                        matches[i]["jugador_id"] = id_elegido
+                        matches[i]["estado"] = "sin_match" if id_elegido is None else "manual"
+                        matches[i]["score"] = 100 if id_elegido is not None else m["score"]
+
+                st.session_state["gps_matches"] = matches
+
+                n_sin_match_final = sum(1 for m in matches if m["jugador_id"] is None)
+
+                if st.button("Importar sesión", type="primary", use_container_width=True):
+                    filas_validas = [m for m in matches if m["jugador_id"] is not None]
+
+                    if not filas_validas:
+                        st.error("Ningún jugador quedó matcheado. Revisá la columna 'Corregir'.")
+                    else:
+                        filas_finales = []
+                        n_mapeos_guardados = 0
+                        for m in filas_validas:
+                            fila_original = df_csv.loc[m["idx_csv"]]
+                            datos = {c: fila_original.get(c) for c in COLUMNAS_METRICAS_KSPORT}
+                            datos["jugador_id"] = m["jugador_id"]
+                            datos["jugador_csv"] = m["nombre_csv"]
+                            filas_finales.append(datos)
+
+                            # Solo se guarda el mapeo cuando el preparador corrigió
+                            # el match a mano — el automático no hace falta guardarlo.
+                            if m["estado"] == "manual":
+                                guardar_mapeo_csv(m["nombre_csv"], m["jugador_id"])
+                                n_mapeos_guardados += 1
+
+                        n_guardados = guardar_carga_externa(
+                            pd.DataFrame(filas_finales), str(fecha_import), tipo_import, "csv_ksport"
+                        )
+                        st.cache_data.clear()
+
+                        # Limpiar el estado para permitir una nueva importación limpia
+                        del st.session_state["gps_matches"]
+                        del st.session_state["gps_archivo_id"]
+
+                        st.success(
+                            f"{n_guardados} jugador(es) importados correctamente para el "
+                            f"{fecha_import.strftime('%d/%m/%Y')}."
+                        )
+                        if n_mapeos_guardados:
+                            st.caption(
+                                f"Se guardaron {n_mapeos_guardados} corrección(es) de nombre — "
+                                "la próxima vez van a matchear solas."
+                            )
+                        if n_sin_match_final:
+                            st.warning(
+                                f"{n_sin_match_final} jugador(es) del CSV quedaron sin importar por falta de match."
+                            )
+                        st.rerun()
 
 
 # ============================================================
